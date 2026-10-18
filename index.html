@@ -1624,6 +1624,22 @@
   }
   :root[data-theme="dark"] .sp-card.ok { background: #25401a; border-color: #4f8a35; color: #b9ec9c; }
   :root[data-theme="dark"] .sp-card.bad { background: #4a2420; border-color: #9a4a42; color: #f3b3ac; }
+  .sp-setup { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 10px 2px 14px; }
+  .sp-sec { font-weight: 700; font-size: 16px; margin-top: 10px; }
+  .sp-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .sp-chip { flex: 1 0 28%; padding: 14px 0 12px; border-radius: 16px; border: 2px solid var(--line, #e6e1d8); background: var(--surface, #fff); box-shadow: 0 3px 0 var(--line, #e6e1d8); font: inherit; font-size: 19px; font-weight: 700; color: inherit; cursor: pointer; }
+  .sp-chip.on { border-color: #1ea7f2; color: #1ea7f2; background: rgba(30,167,242,.1); box-shadow: 0 3px 0 #1ea7f2; }
+  .sp-select { width: 100%; font: inherit; font-size: 16px; padding: 13px 12px; border-radius: 14px; border: 2px solid var(--line, #e6e1d8); background: var(--surface, #fff); color: inherit; }
+  .sp-check { display: flex; gap: 10px; align-items: center; font-size: 15px; cursor: pointer; }
+  .sp-check input { width: 20px; height: 20px; flex: none; }
+  .sp-avail { font-size: 14px; color: var(--ink-soft, #8a867f); min-height: 20px; }
+  .sp-banner { margin: 0 auto 10px; width: 100%; max-width: 330px; padding: 11px 14px; border-radius: 14px; background: #fbdcd8; color: #a8281c; border: 2px solid #e8958c; font-weight: 700; font-size: 16px; text-align: center; line-height: 1.35; box-sizing: border-box; }
+  .sp-banner small { display: block; font-weight: 400; font-size: 13px; direction: ltr; opacity: .9; }
+  .sp-card.wrongtry { background: #fdecea; border-color: #e5484d; color: #a8281c; }
+  .sp-livepill { border: 0; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; font-weight: 700; color: #fff; background: #e5484d; cursor: pointer; animation: spPulse 1.1s infinite; }
+  .sp-combo { display: flex; justify-content: center; align-items: center; gap: 12px; }
+  :root[data-theme="dark"] .sp-banner { background: #4a2420; border-color: #9a4a42; color: #f3b3ac; }
+  :root[data-theme="dark"] .sp-card.wrongtry { background: #3a1d1a; border-color: #c4504a; color: #f3b3ac; }
   `;
 
   // ---------- matching ----------
@@ -1704,8 +1720,9 @@
   }
 
   // ---------- UI ----------
-  let overlay = null, S = null, rec = null, timers = [];
+  let overlay = null, S = null, rec = null, timers = [], restarts = [];
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const COUNTS = [5, 10, 20, 30, 40, 50];
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function later(fn, ms) { const t = setTimeout(fn, ms); timers.push(t); return t; }
   function clearTimers() { timers.forEach(clearTimeout); timers = []; }
@@ -1713,9 +1730,17 @@
     if (document.getElementById('spCss')) return;
     const st = document.createElement('style'); st.id = 'spCss'; st.textContent = CSS; document.head.appendChild(st);
   }
+  function cfgKey(o) { return o.storeKey || 'delearn_sp_cfg'; }
+  function loadCfg(o) {
+    let c = {}; try { c = JSON.parse(localStorage.getItem(cfgKey(o)) || '{}') || {}; } catch (e) {}
+    return { count: COUNTS.indexOf(c.count) >= 0 ? c.count : 10, group: c.group || 'all', preferNew: c.preferNew !== false };
+  }
+  function saveCfg(o, c) { try { localStorage.setItem(cfgKey(o), JSON.stringify(c)); } catch (e) {} }
+
   function stopRec() { try { if (rec) { rec.onresult = rec.onend = rec.onerror = null; rec.abort(); } } catch (e) {} rec = null; if (S) S.listening = false; }
+  function stopLive() { if (S) S.live = false; stopRec(); }
   function close() {
-    clearTimers(); stopRec();
+    clearTimers(); stopLive();
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
     if (overlay) { overlay.remove(); overlay = null; }
     const cb = S && S.opts.onClose; S = null;
@@ -1723,12 +1748,64 @@
   }
   function cur() { return S.queue[S.idx]; }
 
+  // ----- setup screen -----
+  function renderSetup() {
+    if (!overlay || !S) return;
+    const c = S.cfg, groups = S.groups || [];
+    let g = groups.find(x => x.id === c.group); if (!g) { g = groups[0]; if (g) c.group = g.id; }
+    let opts = '', sec = null, open = false;
+    groups.forEach(x => {
+      if ((x.section || '') !== (sec || '')) { if (open) opts += '</optgroup>'; open = false; sec = x.section || ''; if (sec) { opts += '<optgroup label="' + esc(sec) + '">'; open = true; } }
+      opts += '<option value="' + esc(x.id) + '"' + (x.id === c.group ? ' selected' : '') + '>' + esc(x.label) + ' · ' + x.count + ' מילים</option>';
+    });
+    if (open) opts += '</optgroup>';
+    const avail = g ? (g.count < c.count ? 'בבחירה הזו יש רק ' + g.count + ' מילים, נתרגל את כולן.' : 'יוגרלו ' + c.count + ' מילים מתוך ' + g.count + '.') : '';
+    overlay.innerHTML =
+      '<div class="sp-top"><button class="sp-x" id="spClose" aria-label="סגירה">✕</button></div>' +
+      '<div class="sp-title">' + esc(S.opts.setupTitle || 'תרגול בדיבור') + '</div>' +
+      '<div class="sp-setup">' +
+      '<div class="sp-sec">כמה כרטיסיות לתרגל עכשיו?</div>' +
+      '<div class="sp-chips">' + COUNTS.map(n => '<button class="sp-chip' + (c.count === n ? ' on' : '') + '" data-n="' + n + '">' + n + '</button>').join('') + '</div>' +
+      '<div class="sp-sec">מאיפה לקחת מילים?</div>' +
+      '<select class="sp-select" id="spGroup">' + opts + '</select>' +
+      '<label class="sp-check"><input type="checkbox" id="spPref"' + (c.preferNew ? ' checked' : '') + '><span>' + esc(S.opts.preferLabel || 'להתחיל מהמילים שעוד לא שלטתי בהן') + '</span></label>' +
+      '<div class="sp-avail">' + esc(avail) + (S.msg ? ' <b style="color:#a8281c">' + esc(S.msg) + '</b>' : '') + '</div>' +
+      '</div>' +
+      '<div class="sp-actions"><button class="sp-next" id="spGo">התחלה</button></div>' +
+      (SR ? '' : '<div class="sp-links"><span class="sp-link">הדפדפן לא תומך בזיהוי דיבור — התרגול יהיה בהקלדה</span></div>');
+    overlay.querySelector('#spClose').onclick = close;
+    overlay.querySelectorAll('.sp-chip').forEach(b => { b.onclick = () => { c.count = +b.dataset.n; S.msg = ''; renderSetup(); }; });
+    overlay.querySelector('#spGroup').onchange = e => { c.group = e.target.value; S.msg = ''; renderSetup(); };
+    overlay.querySelector('#spPref').onchange = e => { c.preferNew = e.target.checked; };
+    overlay.querySelector('#spGo').onclick = () => begin(false);
+  }
+
+  // ----- round -----
+  function begin(typing) {
+    const o = S.opts, cfg = S.cfg;
+    saveCfg(o, cfg);
+    let items = [];
+    try { items = o.getItems({ group: cfg.group, count: cfg.count, preferNew: cfg.preferNew }) || []; } catch (e) { console.error(e); }
+    items = items.slice(0, cfg.count);
+    if (!items.length) { S.msg = 'אין מילים לתרגול בבחירה הזו.'; renderSetup(); return; }
+    clearTimers(); stopRec();
+    Object.assign(S, {
+      phase: 'play', idx: 0, state: 'ask', attempts: 0, combo: 0, best: 0, firstTry: 0, results: [], done: false, msg: '', heard: '', wrong: false,
+      listening: false, live: false, typing: !!typing || !SR, focusInput: false, base: 0, lastLen: 0, muteUntil: 0, heardAny: false,
+      queue: items.map(it => ({ ref: it.ref, prompt: it.prompt, answer: it.answer, display: it.display, hint: it.hint }))
+    });
+    restarts = [];
+    render();
+    if (!S.typing) startLive(); // this runs inside the click that pressed "start", so the browser allows the microphone
+  }
+
   function render() {
     if (!overlay || !S) return;
+    if (S.phase === 'setup') return renderSetup();
     if (S.done) return renderEnd();
     const c = cur(), total = S.queue.length;
     const pct = Math.round((S.idx / total) * 100);
-    const cardCls = 'sp-card' + (S.state === 'ok' ? ' ok' : S.state === 'bad' ? ' bad' : '') + (S.shake ? ' shake' : '');
+    const cardCls = 'sp-card' + (S.state === 'ok' ? ' ok' : S.state === 'bad' ? ' bad' : S.wrong ? ' wrongtry' : '') + (S.shake ? ' shake' : '');
     let cardInner;
     if (S.state === 'ask') {
       cardInner = '<div class="sp-prompt">' + esc(c.prompt) + '</div>' + (c.hint ? '<div class="sp-pos">' + esc(c.hint) + '</div>' : '');
@@ -1736,7 +1813,9 @@
       cardInner = '<div class="sp-answer">' + esc(c.display || c.answer) + '</div><div class="sp-sub">' + esc(c.prompt) + '</div>';
     }
     const layers = (total - S.idx > 2 ? '<div class="sp-layer l2"></div>' : '') + (total - S.idx > 1 ? '<div class="sp-layer l1"></div>' : '');
-    let heard = '';
+    let banner = '';
+    if (S.wrong && S.state === 'ask') banner = '<div class="sp-banner" id="spBanner">✗ לא נכון, נסו שוב' + (S.wrongHeard ? '<small>' + esc(S.wrongHeard) + '</small>' : '') + '</div>';
+    let heard;
     if (S.msg) heard = '<div class="sp-heard err">' + esc(S.msg) + '</div>';
     else if (S.heard) heard = '<div class="sp-heard">' + esc(S.heard) + '</div>';
     else heard = '<div class="sp-heard"></div>';
@@ -1746,19 +1825,20 @@
     } else if (S.typing || !SR) {
       actions = '<div class="sp-type"><input id="spInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="הקלידו בגרמנית"><button id="spCheck">בדיקה</button></div>';
     } else {
-      actions = '<div class="sp-actions"><button class="sp-mic' + (S.listening ? ' live' : '') + '" id="spMic">' + (S.listening ? '■ מקשיבים… (לחצו לסיום)' : '🎤 לחצו ודברו') + '</button><button class="sp-redo" id="spRedo" title="השמעה">🔊</button></div>';
+      actions = '<div class="sp-actions"><button class="sp-mic' + (S.live ? ' live' : '') + '" id="spMic">' + (S.live ? '■ מקשיבים… (לחצו לעצירה)' : '🎤 לחצו ודברו') + '</button><button class="sp-redo" id="spRedo" title="השמעה">🔊</button></div>';
     }
     let links = '';
     if (S.state === 'ask') {
       if (SR) links += '<button class="sp-link" id="spToggle">' + (S.typing ? 'אני יכול לדבר' : 'לא יכול לדבר עכשיו') + '</button>';
       links += '<button class="sp-link" id="spSkip">לא יודע</button>';
     }
+    const pill = (S.live && S.state !== 'ask') ? '<button class="sp-livepill" id="spLiveStop">🎤 מקשיב · לחצו לעצירה</button>' : '';
     overlay.innerHTML =
       '<div class="sp-top"><button class="sp-x" id="spClose" aria-label="סגירה">✕</button><div class="sp-bar"><div class="sp-fill" style="width:' + pct + '%"></div></div><div class="sp-count">' + S.idx + '/' + total + '</div></div>' +
-      '<div class="sp-combo">' + (S.combo >= 2 ? 'רצף ×' + S.combo : '') + '</div>' +
+      '<div class="sp-combo"><span>' + (S.combo >= 2 ? 'רצף ×' + S.combo : '') + '</span>' + pill + '</div>' +
       '<div class="sp-title">' + esc(S.opts.title || 'אמרו את המילה בגרמנית') + '</div>' +
       '<div class="sp-stage">' + layers + '<div class="' + cardCls + '" id="spCard">' + cardInner + '</div></div>' +
-      heard + actions + '<div class="sp-links">' + links + '</div>';
+      banner + heard + actions + '<div class="sp-links">' + links + '</div>';
     S.shake = false;
     bind();
     if (S.typing && S.state === 'ask') { const i = document.getElementById('spInput'); if (i && S.focusInput) { i.focus(); } }
@@ -1766,11 +1846,16 @@
   function bind() {
     const $ = id => document.getElementById(id);
     if ($('spClose')) $('spClose').onclick = close;
-    if ($('spMic')) $('spMic').onclick = toggleListen;
-    if ($('spRedo')) $('spRedo').onclick = () => { speakWord(cur().answer); };
+    if ($('spMic')) $('spMic').onclick = () => { if (S.live) { stopLive(); S.msg = ''; render(); } else startLive(); };
+    if ($('spLiveStop')) $('spLiveStop').onclick = () => { stopLive(); render(); };
+    if ($('spRedo')) $('spRedo').onclick = () => { S.muteUntil = Date.now() + 2200; speakWord(cur().answer); };
     if ($('spNext')) $('spNext').onclick = advance;
-    if ($('spSkip')) $('spSkip').onclick = () => { stopRec(); reveal(false); };
-    if ($('spToggle')) $('spToggle').onclick = () => { stopRec(); S.typing = !S.typing; S.msg = ''; S.heard = ''; S.focusInput = true; render(); };
+    if ($('spSkip')) $('spSkip').onclick = () => { reveal(false); };
+    if ($('spToggle')) $('spToggle').onclick = () => {
+      S.msg = ''; S.heard = ''; S.focusInput = true;
+      if (S.typing) { S.typing = false; render(); startLive(); }
+      else { stopLive(); S.typing = true; render(); }
+    };
     if ($('spCheck')) {
       const go = () => { const v = $('spInput').value.trim(); if (v) submit([v]); };
       $('spCheck').onclick = go;
@@ -1780,38 +1865,58 @@
   function speakWord(text) {
     try { if (typeof window.speak === 'function') window.speak(text, null); } catch (e) {}
   }
-  function toggleListen() {
-    if (S.state !== 'ask') return;
-    if (S.listening) { try { rec && rec.stop(); } catch (e) {} return; }
-    S.msg = ''; S.heard = '';
-    stopRec();
-    let r;
-    try { r = new SR(); } catch (e) { S.typing = true; S.msg = 'זיהוי הדיבור לא זמין. אפשר להקליד.'; render(); return; }
-    rec = r;
-    r.lang = 'de-DE'; r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
-    let got = false;
-    r.onresult = e => {
-      const res = e.results[e.results.length - 1];
-      const alts = []; for (let i = 0; i < res.length; i++) alts.push(res[i].transcript);
-      if (!alts.length) return;
-      S.heard = alts[0];
-      if (matches(cur().answer, alts)) { got = true; stopRec(); onCorrect(); return; }
-      if (res.isFinal) { got = true; stopRec(); onWrong(alts[0]); return; }
-      const h = overlay && overlay.querySelector('.sp-heard'); if (h) { h.textContent = alts[0]; h.className = 'sp-heard'; }
-    };
-    r.onerror = e => {
-      const code = e && e.error;
-      if (code === 'aborted') return;
-      got = true; stopRec();
-      if (code === 'not-allowed' || code === 'service-not-allowed') { S.typing = true; S.msg = 'אין גישה למיקרופון או לזיהוי דיבור כאן. עברנו להקלדה.'; }
-      else if (code === 'no-speech') S.msg = 'לא שמעתי כלום. נסו שוב.';
-      else if (code === 'audio-capture') { S.typing = true; S.msg = 'לא נמצא מיקרופון. עברנו להקלדה.'; }
-      else S.msg = 'הזיהוי נכשל (' + (code || 'שגיאה') + '). נסו שוב או הקלידו.';
-      render();
-    };
-    r.onend = () => { if (rec === r) { rec = null; S.listening = false; if (!got && S.state === 'ask') { S.msg = 'לא שמעתי. נסו שוב.'; render(); } } };
-    try { r.start(); S.listening = true; render(); } catch (e) { S.listening = false; S.typing = true; S.msg = 'לא הצלחתי להפעיל את המיקרופון. עברנו להקלדה.'; render(); }
+
+  // ----- continuous listening: one press, keeps going card after card until stopped -----
+  function toTyping(msg) { stopLive(); S.typing = true; S.focusInput = true; S.msg = msg; render(); }
+  function startLive() {
+    if (!SR || !S || S.typing || S.phase !== 'play' || S.done) return;
+    S.live = true; S.msg = '';
+    openRec();
   }
+  function openRec() {
+    if (!S || !S.live) return;
+    try { if (rec) { rec.onresult = rec.onend = rec.onerror = null; rec.abort(); } } catch (e) {}
+    rec = null;
+    let r;
+    try { r = new SR(); } catch (e) { toTyping('זיהוי הדיבור לא זמין. אפשר להקליד.'); return; }
+    rec = r;
+    r.lang = 'de-DE'; r.interimResults = true; r.maxAlternatives = 5; r.continuous = true;
+    S.base = 0; S.lastLen = 0;
+    r.onresult = e => { if (rec !== r || !S || S.phase !== 'play' || S.done) return; S.heardAny = true; handleResult(e); };
+    r.onerror = e => {
+      if (rec !== r || !S) return;
+      const code = e && e.error;
+      if (code === 'aborted' || code === 'no-speech') return; // onend follows and restarts
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        if (S.heardAny) { stopLive(); S.msg = 'המיקרופון נעצר. לחצו על המיקרופון להמשך.'; render(); }
+        else toTyping('אין גישה למיקרופון או לזיהוי דיבור כאן. עברנו להקלדה.');
+      } else if (code === 'audio-capture') toTyping('לא נמצא מיקרופון. עברנו להקלדה.');
+      else { stopLive(); S.msg = 'הזיהוי נכשל (' + (code || 'שגיאה') + '). לחצו שוב או הקלידו.'; render(); }
+    };
+    r.onend = () => {
+      if (rec !== r) return;
+      rec = null; if (S) S.listening = false;
+      if (!S || !S.live || S.done || S.typing) return;
+      const now = Date.now(); restarts = restarts.filter(t => now - t < 5000); restarts.push(now);
+      if (restarts.length > 5) { stopLive(); S.msg = 'המיקרופון נעצר. לחצו על המיקרופון להמשך.'; render(); return; }
+      later(openRec, 120); // the browser ends a session after a quiet moment; open the next one right away
+    };
+    try { r.start(); S.listening = true; } catch (e) { stopLive(); S.msg = 'לא הצלחתי להפעיל את המיקרופון. לחצו שוב או הקלידו.'; }
+    render();
+  }
+  function handleResult(e) {
+    const n = e.results.length; S.lastLen = n;
+    if (S.state !== 'ask' || Date.now() < S.muteUntil) { S.base = n; return; } // ignore what the phone hears while a card is answered / its word is played
+    const i = n - 1; if (i < S.base) return;
+    const res = e.results[i];
+    const alts = []; for (let k = 0; k < res.length; k++) alts.push(res[k].transcript);
+    if (!alts.length) return;
+    S.heard = alts[0];
+    if (matches(cur().answer, alts)) { S.base = n; onCorrect(); return; }
+    if (res.isFinal) { S.base = n; onWrong(alts[0]); return; }
+    const h = overlay && overlay.querySelector('.sp-heard'); if (h) { h.textContent = alts[0]; h.className = 'sp-heard'; }
+  }
+
   function submit(alts) {
     if (S.state !== 'ask') return;
     S.heard = alts[0];
@@ -1827,7 +1932,8 @@
   function onCorrect() {
     const first = !cur().failed;
     if (first) record(true);
-    S.state = 'ok'; S.msg = '';
+    S.state = 'ok'; S.msg = ''; S.wrong = false; S.wrongHeard = ''; S.heard = '';
+    S.muteUntil = Date.now() + 1500;
     render();
     speakWord(cur().answer);
     later(() => { if (S && S.state === 'ok') advance(); }, 1700);
@@ -1835,26 +1941,31 @@
   function onWrong(heard) {
     S.attempts++;
     S.combo = 0;
-    S.heard = heard ? 'שמעתי: ' + heard : '';
+    S.heard = '';
     if (S.attempts >= 3) { reveal(false); return; }
-    S.msg = ''; S.shake = true;
+    S.msg = ''; S.shake = true; S.wrong = true; S.wrongHeard = heard ? 'שמעתי: ' + heard : '';
     if (!cur().failed) cur().failed = true;
+    S.focusInput = true;
     render();
   }
   function reveal(ok) {
     const c = cur();
     if (!c.requeued && !c.failedRecorded) { c.failedRecorded = true; record(false); }
     c.failed = true;
-    S.state = 'bad'; S.msg = ''; S.heard = '';
+    S.state = 'bad'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
+    S.muteUntil = Date.now() + 1500;
     render();
     speakWord(c.answer);
     // practise it once more at the end of the round
     if (!c.requeued) S.queue.push({ ref: c.ref, prompt: c.prompt, answer: c.answer, display: c.display, hint: c.hint, requeued: true });
+    if (S.live) later(() => { if (S && S.state === 'bad' && S.live) advance(); }, 3800); // hands-free: keep going
   }
   function advance() {
-    clearTimers(); stopRec();
-    S.idx++; S.attempts = 0; S.state = 'ask'; S.msg = ''; S.heard = '';
-    if (S.idx >= S.queue.length) { S.done = true; S.idx = S.queue.length; }
+    clearTimers();
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+    S.idx++; S.attempts = 0; S.state = 'ask'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
+    S.muteUntil = Date.now() + 350; S.base = S.lastLen;
+    if (S.idx >= S.queue.length) { S.done = true; S.idx = S.queue.length; stopLive(); }
     render();
   }
   function renderEnd() {
@@ -1864,28 +1975,24 @@
       '<div class="sp-end"><h2>' + (miss.length === 0 ? 'מושלם! 🎉' : 'סיימתם סיבוב') + '</h2>' +
       '<div class="sp-score">' + S.firstTry + '/' + n + '</div><div>נכון בניסיון הראשון' + (S.best >= 2 ? ' · רצף שיא ×' + S.best : '') + '</div>' +
       (miss.length ? '<div class="sp-miss">' + miss.map(r => '<div><span>' + esc(r.item.prompt) + '</span><b>' + esc(r.item.display || r.item.answer) + '</b></div>').join('') + '</div>' : '') +
-      '<div class="sp-btns"><button class="sp-next" id="spAgain">סיבוב נוסף</button><button class="sp-redo" id="spDone" style="width:auto;flex:0 0 auto;padding:0 18px;font-size:16px;color:inherit">סגירה</button></div></div>';
+      '<div class="sp-btns"><button class="sp-next" id="spAgain">סיבוב נוסף</button></div>' +
+      '<div class="sp-btns"><button class="sp-redo" id="spSettings" style="width:auto;flex:1;padding:0 14px;height:48px;font-size:15px;color:inherit">שינוי הגדרות</button><button class="sp-redo" id="spDone" style="width:auto;flex:1;padding:0 14px;height:48px;font-size:15px;color:inherit">סגירה</button></div></div>';
     document.getElementById('spClose').onclick = close;
     document.getElementById('spDone').onclick = close;
-    document.getElementById('spAgain').onclick = () => { const o = S.opts, t = S.typing; stopRec(); start(o, t); };
+    document.getElementById('spAgain').onclick = () => { const t = S.typing; begin(t); };
+    document.getElementById('spSettings').onclick = () => { S.groups = S.opts.getGroups ? S.opts.getGroups() : []; S.phase = 'setup'; S.msg = ''; render(); };
   }
 
-  function start(opts, typing) {
+  function open(opts) {
     injectCss();
-    const items = opts.getItems ? opts.getItems() : (opts.items || []);
-    if (!items.length) { alert('אין מילים לתרגול כרגע.'); return; }
     clearTimers(); stopRec();
     if (!overlay) { overlay = document.createElement('div'); overlay.className = 'sp-overlay'; document.body.appendChild(overlay); }
-    S = {
-      opts, idx: 0, state: 'ask', attempts: 0, combo: 0, best: 0, firstTry: 0, results: [], done: false, msg: '', heard: '', listening: false,
-      typing: !!typing || !SR, focusInput: false,
-      queue: items.map(it => ({ ref: it.ref, prompt: it.prompt, answer: it.answer, display: it.display, hint: it.hint }))
-    };
+    S = { opts, phase: 'setup', cfg: loadCfg(opts), groups: opts.getGroups ? opts.getGroups() : [{ id: 'all', label: 'הכול', count: 999 }], msg: '', live: false, listening: false, typing: !SR, done: false };
     render();
   }
 
   window.SpeakPractice = {
-    open: function (opts) { start(opts, false); },
+    open: open,
     matches: matches, // exported for tests
     _state: function () { return S; },
     supported: !!SR
@@ -4503,17 +4610,43 @@
 
 
   // <<SPEAKADAPT-START>>
+
   function spCleanHe(s) { return String(s || '').replace(/\s*\([^)]*[A-Za-z][^)]*\)/g, '').replace(/\s+/g, ' ').trim(); }
+  function spKaterGroups() {
+    const known = new Set(getKaterVocabKnown());
+    const g = [{ id: 'all', label: 'כל אוצר המילים', count: KATER_VOCAB.length, section: '' }];
+    const unk = KATER_VOCAB.filter((v, i) => !known.has(i)).length;
+    if (unk) g.push({ id: 'unk', label: 'רק מילים שעוד לא ידעתי', count: unk, section: '' });
+    ['1', '2'].forEach(p => { const n = KATER_VOCAB.filter(v => v.part === p).length; if (n) g.push({ id: 'p:' + p, label: 'חלק ' + p + ' במחזה', count: n, section: 'לפי חלק' }); });
+    const seen = new Set();
+    KATER_LINES.forEach(l => {
+      const k = katerSceneKey(l); if (seen.has(k)) return; seen.add(k);
+      const n = KATER_VOCAB.filter(v => katerSceneKey(v) === k).length;
+      if (n) g.push({ id: 's:' + k, label: 'חלק ' + l.part + ' · ' + l.scene, count: n, section: 'לפי סצנה' });
+    });
+    return g;
+  }
   function openKaterSpeak() {
     if (!window.SpeakPractice) return;
     SpeakPractice.open({
       title: 'אמרו את המילה בגרמנית',
-      getItems: () => {
+      setupTitle: 'תרגול מילים מהתפקיד בדיבור',
+      storeKey: 'delearn_kater_sp_cfg',
+      preferLabel: 'להתחיל מהמילים שעוד לא סימנתי "ידעתי"',
+      getGroups: spKaterGroups,
+      getItems: ({ group, count, preferNew }) => {
         const known = new Set(getKaterVocabKnown());
-        const pool = katerVocabFilteredList();
-        const unk = shuffleArray(pool.filter(v => !known.has(KATER_VOCAB.indexOf(v))));
-        const kn = shuffleArray(pool.filter(v => known.has(KATER_VOCAB.indexOf(v))));
-        const pick = unk.concat(kn).slice(0, 10);
+        let pool = KATER_VOCAB;
+        if (group === 'unk') pool = pool.filter((v, i) => !known.has(i));
+        else if (group.indexOf('p:') === 0) pool = pool.filter(v => v.part === group.slice(2));
+        else if (group.indexOf('s:') === 0) pool = pool.filter(v => katerSceneKey(v) === group.slice(2));
+        let pick;
+        if (preferNew) {
+          const unk = shuffleArray(pool.filter(v => !known.has(KATER_VOCAB.indexOf(v))));
+          const kn = shuffleArray(pool.filter(v => known.has(KATER_VOCAB.indexOf(v))));
+          pick = unk.concat(kn);
+        } else pick = shuffleArray(pool.slice());
+        pick = pick.slice(0, count);
         return shuffleArray(pick).map(v => ({ ref: KATER_VOCAB.indexOf(v), prompt: spCleanHe(v.he), answer: v.de, display: (v.gender ? v.gender + ' ' : '') + v.de, hint: v.pos }));
       },
       onResult: (idx, ok) => {
