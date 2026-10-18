@@ -1876,13 +1876,14 @@
       if (SR) links += '<button class="sp-link" id="spToggle">' + (S.typing ? 'אני יכול לדבר' : 'לא יכול לדבר עכשיו') + '</button>';
       links += '<button class="sp-link" id="spSkip">לא יודע</button>';
     }
+    links += '<button class="sp-link" id="spDbgBtn" style="opacity:.45">אבחון</button>';
     const pill = (S.live && S.state !== 'ask') ? '<button class="sp-livepill" id="spLiveStop">🎤 מקשיב · לחצו לעצירה</button>' : '';
     overlay.innerHTML =
       '<div class="sp-top"><button class="sp-x" id="spClose" aria-label="סגירה">✕</button><div class="sp-bar"><div class="sp-fill" style="width:' + pct + '%"></div></div><div class="sp-count">' + S.idx + '/' + total + '</div></div>' +
       '<div class="sp-combo"><span>' + (S.combo >= 2 ? 'רצף ×' + S.combo : '') + '</span>' + pill + '</div>' +
       '<div class="sp-title">' + esc(S.opts.title || 'אמרו את המילה בגרמנית') + '</div>' +
       '<div class="sp-stage">' + layers + (S.ghost ? '<div class="sp-card bad ghost">' + S.ghost + '</div>' : '') + '<div class="' + cardCls + '" id="spCard">' + cardInner + '</div></div>' +
-      banner + heard + actions + '<div class="sp-links">' + links + '</div>';
+      banner + heard + actions + '<div class="sp-links">' + links + '</div>' + (S.debug ? '<pre id="spDbg" style="font-size:11px;direction:ltr;text-align:left;margin:6px 0 0;max-height:120px;overflow:auto;color:var(--ink-soft,#8a867f);white-space:pre-wrap">' + esc((S.log || []).join('\n')) + '</pre>' : '');
     S.shake = false; S.enter = false; S.ghost = null;
     bind();
     if (S.typing && S.state === 'ask') { const i = document.getElementById('spInput'); if (i && S.focusInput) { i.focus(); } }
@@ -1891,6 +1892,7 @@
     const $ = id => document.getElementById(id);
     if ($('spClose')) $('spClose').onclick = close;
     if ($('spMic')) $('spMic').onclick = () => { if (S.live) { stopLive(); S.msg = ''; render(); } else startLive(); };
+    if ($('spDbgBtn')) $('spDbgBtn').onclick = () => { S.debug = !S.debug; render(); };
     if ($('spLiveStop')) $('spLiveStop').onclick = () => { stopLive(); render(); };
     if ($('spRedo')) $('spRedo').onclick = () => { speakWord(cur().answer, true); };
     if ($('spNext')) $('spNext').onclick = advance;
@@ -1929,11 +1931,11 @@
     try { r = new SR(); } catch (e) { toTyping('זיהוי הדיבור לא זמין. אפשר להקליד.'); return; }
     rec = r;
     r.lang = 'de-DE'; r.interimResults = true; r.maxAlternatives = 5; r.continuous = true;
-    S.base = 0; S.lastLen = 0;
+    S.lastLen = 0; S.consIdx = null; S.consTxt = null; S.curIdx = -1; S.curTxt = '';
     r.onresult = e => { if (rec !== r || !S || S.phase !== 'play' || S.done) return; S.heardAny = true; handleResult(e); };
     r.onerror = e => {
       if (rec !== r || !S) return;
-      const code = e && e.error;
+      const code = e && e.error; dbg('error ' + code);
       if (code === 'aborted' || code === 'no-speech') return; // onend follows and restarts
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         if (S.heardAny) { stopLive(); S.msg = 'המיקרופון נעצר. לחצו על המיקרופון להמשך.'; render(); }
@@ -1943,26 +1945,42 @@
     };
     r.onend = () => {
       if (rec !== r) return;
-      rec = null; if (S) S.listening = false;
+      rec = null; if (S) S.listening = false; dbg('session ended');
       if (!S || !S.live || S.done || S.typing) return;
       const now = Date.now(); restarts = restarts.filter(t => now - t < 5000); restarts.push(now);
       if (restarts.length > 5) { stopLive(); S.msg = 'המיקרופון נעצר. לחצו על המיקרופון להמשך.'; render(); return; }
       later(openRec, 120); // the browser ends a session after a quiet moment; open the next one right away
     };
+    dbg('session start');
     try { r.start(); S.listening = true; } catch (e) { stopLive(); S.msg = 'לא הצלחתי להפעיל את המיקרופון. לחצו שוב או הקלידו.'; }
     render();
   }
+  // Browsers differ in how a continuous session reports speech (a new list entry per phrase on Chrome; one entry that keeps growing on iPhone),
+  // so we never rely on entry numbers: we remember the text already dealt with and only look at what was said after it.
+  const lc = x => String(x == null ? '' : x).toLowerCase().replace(/\s+/g, ' ').trim();
+  function dbg(msg) { if (!S) return; (S.log = S.log || []).push(msg); if (S.log.length > 14) S.log.shift(); if (S.debug) { const d = overlay && overlay.querySelector('#spDbg'); if (d) d.textContent = S.log.join('\n'); } }
+  function consumeNow() { if (S) { S.consIdx = S.curIdx; S.consTxt = S.curTxt; clearTimeout(S.stable); } }
   function handleResult(e) {
-    const n = e.results.length; S.lastLen = n;
-    if (S.state !== 'ask' || Date.now() < S.muteUntil) { S.base = n; return; } // ignore what the phone hears while a card is answered / its word is played
-    const i = n - 1; if (i < S.base) return;
-    const res = e.results[i];
+    const n = e.results.length, i = n - 1, res = e.results[i];
     const alts = []; for (let k = 0; k < res.length; k++) alts.push(res[k].transcript);
+    S.lastLen = n; S.curIdx = i; S.curTxt = alts.length ? lc(alts[0]) : '';
+    dbg((res.isFinal ? 'F' : 'i') + n + ' "' + (alts[0] || '') + '"' + (S.state !== 'ask' ? ' (' + S.state + ')' : ''));
     if (!alts.length) return;
-    S.heard = alts[0];
-    if (matches(cur().answer, alts)) { S.base = n; onCorrect(); return; }
-    if (res.isFinal) { S.base = n; onWrong(alts[0]); return; }
-    const h = overlay && overlay.querySelector('.sp-heard'); if (h) { h.textContent = alts[0]; h.className = 'sp-heard'; }
+    if (S.state !== 'ask' || Date.now() < S.muteUntil) { consumeNow(); return; } // ignore what the phone hears while a card is answered / its word is played
+    let use = alts;
+    if (S.consTxt && S.consIdx === i) {
+      if (lc(alts[0]) === S.consTxt) return; // nothing new since the last card
+      use = alts.map(a => { const x = lc(a); return x.indexOf(S.consTxt) === 0 ? x.slice(S.consTxt.length).trim() : a; }).filter(Boolean);
+      if (!use.length) return;
+    }
+    S.heard = use[0];
+    if (matches(cur().answer, use)) { consumeNow(); onCorrect(); return; }
+    if (res.isFinal) { consumeNow(); onWrong(use[0]); return; }
+    const h = overlay && overlay.querySelector('.sp-heard'); if (h) { h.textContent = use[0]; h.className = 'sp-heard'; }
+    // some phones never mark a phrase as final: when the text stops changing for a moment, treat it as the answer
+    clearTimeout(S.stable);
+    const snap = use[0], idxAtArm = S.idx;
+    S.stable = later(() => { if (S && S.state === 'ask' && S.idx === idxAtArm && S.live && S.heard === snap) { consumeNow(); onWrong(snap); } }, 1500);
   }
 
   function submit(alts) {
@@ -1980,6 +1998,7 @@
   function onCorrect() {
     const first = !cur().failed;
     if (first) record(true);
+    consumeNow();
     S.state = 'ok'; S.msg = ''; S.wrong = false; S.wrongHeard = ''; S.heard = '';
     S.muteUntil = Date.now() + 1500;
     render();
@@ -2000,6 +2019,7 @@
     const c = cur();
     if (!c.requeued && !c.failedRecorded) { c.failedRecorded = true; record(false); }
     c.failed = true;
+    consumeNow();
     S.state = 'bad'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
     S.muteUntil = Date.now() + 1500;
     render();
@@ -2014,7 +2034,7 @@
     if (S.state === 'bad') { const pc = cur(); S.ghost = '<div class="sp-answer">' + esc(pc.display || pc.answer) + '</div><div class="sp-sub">' + esc(pc.prompt) + '</div>'; } // a missed card slides back behind the stack
     S.enter = true;
     S.idx++; S.attempts = 0; S.state = 'ask'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
-    S.muteUntil = Date.now() + 350; S.base = S.lastLen;
+    S.muteUntil = Date.now() + 350; consumeNow();
     if (S.idx >= S.queue.length) { S.done = true; S.idx = S.queue.length; stopLive(); }
     render();
   }
