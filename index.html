@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>התפקיד של החתול</title>
-<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Heebo:wght@400;500;700&family=Source+Serif+4:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Heebo:wght@400;500;700&family=Source+Serif+4:ital,wght@0,500;0,600;1,500&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #FAF7F2;
@@ -1775,7 +1775,7 @@
   function cfgKey(o) { return o.storeKey || 'delearn_sp_cfg'; }
   function loadCfg(o) {
     let c = {}; try { c = JSON.parse(localStorage.getItem(cfgKey(o)) || '{}') || {}; } catch (e) {}
-    return { count: COUNTS.indexOf(c.count) >= 0 ? c.count : 10, group: c.group || 'all', preferNew: c.preferNew !== false, speak: c.speak === true };
+    return { count: COUNTS.indexOf(c.count) >= 0 ? c.count : 10, group: c.group || 'all', preferNew: c.preferNew !== false, say: c.say !== false, sound: c.sound !== false };
   }
   function saveCfg(o, c) { try { localStorage.setItem(cfgKey(o), JSON.stringify(c)); } catch (e) {} }
 
@@ -1789,6 +1789,27 @@
     if (cb) { try { cb(); } catch (e) {} }
   }
   function cur() { return S.queue[S.idx]; }
+
+  // ----- little sound effects (made with the Web Audio API, no files) -----
+  let ac = null;
+  function audioCtx() { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch (e) { ac = null; } return ac; }
+  function sfx(kind) {
+    if (!S || !S.cfg || S.cfg.sound === false) return;
+    const c = audioCtx(); if (!c) return;
+    try {
+      const t = c.currentTime, good = kind === 'ok';
+      const notes = good ? [[523.25, 0], [659.25, 0.09], [783.99, 0.18], [1046.5, 0.3]] : [[233.08, 0], [174.61, 0.15]];
+      notes.forEach(n => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = good ? 'triangle' : 'square'; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t + n[1]);
+        g.gain.exponentialRampToValueAtTime(good ? 0.26 : 0.09, t + n[1] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + n[1] + (good ? 0.3 : 0.26));
+        o.connect(g); g.connect(c.destination); o.start(t + n[1]); o.stop(t + n[1] + 0.36);
+      });
+    } catch (e) {}
+  }
+  function wordMs(text) { return Math.min(6000, Math.max(2000, 1000 + 130 * String(text).length)); }
 
   // ----- setup screen -----
   function renderSetup() {
@@ -1811,7 +1832,8 @@
       '<div class="sp-sec">מאיפה לקחת מילים?</div>' +
       '<select class="sp-select" id="spGroup">' + opts + '</select>' +
       '<label class="sp-check"><input type="checkbox" id="spPref"' + (c.preferNew ? ' checked' : '') + '><span>' + esc(S.opts.preferLabel || 'להתחיל מהמילים שעוד לא שלטתי בהן') + '</span></label>' +
-      '<label class="sp-check"><input type="checkbox" id="spSpeak"' + (c.speak ? ' checked' : '') + '><span>להשמיע את המילה אחרי כל כרטיס (באייפון זה עלול לעצור את המיקרופון)</span></label>' +
+      '<label class="sp-check"><input type="checkbox" id="spSpeak"' + (c.say ? ' checked' : '') + '><span>להשמיע את המילה בגרמנית אחרי כל כרטיס</span></label>' +
+      '<label class="sp-check"><input type="checkbox" id="spSound"' + (c.sound ? ' checked' : '') + '><span>צלילי הצלחה וטעות</span></label>' +
       '<div class="sp-avail">' + esc(avail) + (S.msg ? ' <b style="color:#a8281c">' + esc(S.msg) + '</b>' : '') + '</div>' +
       '</div>' +
       '<div class="sp-actions"><button class="sp-next" id="spGo">התחלה</button></div>' +
@@ -1820,8 +1842,9 @@
     overlay.querySelectorAll('.sp-chip').forEach(b => { b.onclick = () => { c.count = b.dataset.n === 'all' ? 'all' : +b.dataset.n; S.msg = ''; renderSetup(); }; });
     overlay.querySelector('#spGroup').onchange = e => { c.group = e.target.value; S.msg = ''; renderSetup(); };
     overlay.querySelector('#spPref').onchange = e => { c.preferNew = e.target.checked; };
-    overlay.querySelector('#spSpeak').onchange = e => { c.speak = e.target.checked; };
-    overlay.querySelector('#spGo').onclick = () => begin(false);
+    overlay.querySelector('#spSpeak').onchange = e => { c.say = e.target.checked; };
+    overlay.querySelector('#spSound').onchange = e => { c.sound = e.target.checked; };
+    overlay.querySelector('#spGo').onclick = () => { audioCtx(); begin(false); };
   }
 
   // ----- round -----
@@ -1858,7 +1881,7 @@
     }
     const layers = (total - S.idx > 2 ? '<div class="sp-layer l2"></div>' : '') + (total - S.idx > 1 ? '<div class="sp-layer l1"></div>' : '');
     let banner = '';
-    if (S.wrong && S.state === 'ask') banner = '<div class="sp-banner" id="spBanner">✗ לא נכון, נסו שוב' + (S.wrongHeard ? '<small>' + esc(S.wrongHeard) + '</small>' : '') + '</div>';
+    if (S.wrong && S.state === 'ask') banner = '<div class="sp-banner" id="spBanner">✗ לא נכון · הקשיבו ונסו שוב' + (S.wrongHeard ? '<small>' + esc(S.wrongHeard) + '</small>' : '') + '</div>';
     let heard;
     if (S.msg) heard = '<div class="sp-heard err">' + esc(S.msg) + '</div>';
     else if (S.heard) heard = '<div class="sp-heard">' + esc(S.heard) + '</div>';
@@ -1909,9 +1932,9 @@
     }
   }
   function speakWord(text, manual) {
-    if (!manual && !(S && S.cfg && S.cfg.speak)) return;
+    if (!manual && !(S && S.cfg && S.cfg.say)) return;
     const resume = S && S.live && !S.typing;
-    const ms = Math.min(6000, Math.max(2000, 1000 + 130 * String(text).length));
+    const ms = wordMs(text);
     if (resume) { S.muteUntil = Date.now() + ms + 300; stopRec(); clearTimeout(S.resumeT); } // playing sound can cut the microphone on a phone: pause it, then reopen
     try { if (typeof window.speak === 'function') window.speak(text, null); } catch (e) {}
     if (resume) S.resumeT = later(() => { if (S && S.live && !S.done && !S.typing && !rec) openRec(); }, ms);
@@ -2001,10 +2024,12 @@
     if (first) record(true);
     consumeNow();
     S.state = 'ok'; S.msg = ''; S.wrong = false; S.wrongHeard = ''; S.heard = '';
-    S.muteUntil = Date.now() + 1500;
+    const w = cur().display || cur().answer, say = !!(S.cfg && S.cfg.say);
+    S.muteUntil = Date.now() + (say ? wordMs(w) + 800 : 1500);
     render();
-    speakWord(cur().display || cur().answer);
-    later(() => { if (S && S.state === 'ok') advance(); }, 1700);
+    sfx('ok');
+    if (say) later(() => { if (S && S.state === 'ok') speakWord(w); }, 450); // the chime first, then how the word is said
+    later(() => { if (S && S.state === 'ok') advance(); }, say ? wordMs(w) + 500 : 1700);
   }
   function onWrong(heard) {
     S.attempts++;
@@ -2015,6 +2040,9 @@
     if (!cur().failed) cur().failed = true;
     S.focusInput = true;
     render();
+    sfx('bad');
+    const w = cur().display || cur().answer;
+    if (!S.cfg || S.cfg.say !== false) later(() => { if (S && S.state === 'ask') speakWord(w, true); }, 500); // hear how it should sound, then try again
   }
   function reveal(ok) {
     const c = cur();
@@ -2024,7 +2052,8 @@
     S.state = 'bad'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
     S.muteUntil = Date.now() + 1500;
     render();
-    speakWord(c.display || c.answer, true); // after a miss the word is always played, so the person hears how it should sound
+    sfx('bad');
+    later(() => { if (S && S.state === 'bad') speakWord(c.display || c.answer, true); }, 500); // after a miss the word is always played, so the person hears how it should sound
     // practise it once more at the end of the round
     if (!c.requeued) S.queue.push({ ref: c.ref, prompt: c.prompt, answer: c.answer, display: c.display, hint: c.hint, requeued: true });
   }
@@ -2072,6 +2101,182 @@
 
 </script>
 <!--SPEAKMOD-END-->
+<!--FUN-START-->
+<script>
+(function () {
+  var KEY = 'delearn_kater_fun', root = document.documentElement;
+  function get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+  function apply(on) { root.classList.toggle('fun', on); try { var m = document.querySelector('meta[name="theme-color"]'); if (m) { if (!m.dataset.orig) m.dataset.orig = m.getAttribute('content'); m.setAttribute('content', on ? '#58CC02' : m.dataset.orig); } } catch (e) {} }
+  apply(get() !== '0');
+  document.addEventListener('DOMContentLoaded', function () {
+    var panel = document.getElementById('settingsPanel'); if (!panel || document.getElementById('funOn')) return;
+    var row = document.createElement('div'); row.className = 'settings-row';
+    row.innerHTML = '<label>עיצוב</label><div class="speed-group"><button class="speed-btn" id="funOn">כיפי</button><button class="speed-btn" id="funOff">קלאסי</button></div>';
+    panel.insertBefore(row, panel.firstChild);
+    function mark() { var on = root.classList.contains('fun'); document.getElementById('funOn').classList.toggle('selected', on); document.getElementById('funOff').classList.toggle('selected', !on); }
+    document.getElementById('funOn').onclick = function () { try { localStorage.setItem(KEY, '1'); } catch (e) {} apply(true); mark(); };
+    document.getElementById('funOff').onclick = function () { try { localStorage.setItem(KEY, '0'); } catch (e) {} apply(false); mark(); };
+    mark();
+  });
+})();
+</script>
+<style id="funTheme">
+/* ===== "Fun" theme: chunky, colourful, Duolingo-style look. Remove the 'fun' class on <html> to get the classic look back. ===== */
+html.fun {
+  --bg: #FFFFFF; --surface: #FFFFFF; --ink: #3C3C3C; --ink-soft: #777777;
+  --accent: #1899D6; --accent-soft: #DDF4FF; --line: #E5E5E5;
+  --fun-green: #58CC02; --fun-green-dk: #58A700; --fun-blue: #1CB0F6; --fun-blue-dk: #1899D6;
+  --fun-red: #FF4B4B; --fun-red-dk: #EA2B2B; --fun-orange: #FF9600; --fun-purple: #CE82FF;
+  --fun-shade: #E5E5E5; --fun-ok-bg: #D7FFB8; --fun-bad-bg: #FFDFE0;
+  --tag-1: #E08700; --tag-2: #46A302; --tag-3: #EA2B2B; --tag-4: #1899D6; --tag-5: #A560D8;
+  --tag-1-bg: #FFF0D5; --tag-2-bg: #E5F8D0; --tag-3-bg: #FFE0E0; --tag-4-bg: #DDF4FF; --tag-5-bg: #F3E3FF;
+}
+@media (prefers-color-scheme: dark) {
+  html.fun:not([data-theme="light"]) {
+    --bg: #131F24; --surface: #1F2C34; --ink: #F1F7FB; --ink-soft: #9DB0BB;
+    --accent: #49C0F8; --accent-soft: #1B3A4B; --line: #37464F; --fun-shade: #0B1215;
+    --fun-ok-bg: #243F14; --fun-bad-bg: #4A2222;
+    --tag-1: #FFB43F; --tag-2: #8FE04A; --tag-3: #FF8A8A; --tag-4: #49C0F8; --tag-5: #D9A5FF;
+    --tag-1-bg: #3B2C12; --tag-2-bg: #22361A; --tag-3-bg: #3F2020; --tag-4-bg: #17394A; --tag-5-bg: #35244A;
+  }
+}
+html.fun[data-theme="dark"] {
+  --bg: #131F24; --surface: #1F2C34; --ink: #F1F7FB; --ink-soft: #9DB0BB;
+  --accent: #49C0F8; --accent-soft: #1B3A4B; --line: #37464F; --fun-shade: #0B1215;
+  --fun-ok-bg: #243F14; --fun-bad-bg: #4A2222;
+  --tag-1: #FFB43F; --tag-2: #8FE04A; --tag-3: #FF8A8A; --tag-4: #49C0F8; --tag-5: #D9A5FF;
+  --tag-1-bg: #3B2C12; --tag-2-bg: #22361A; --tag-3-bg: #3F2020; --tag-4-bg: #17394A; --tag-5-bg: #35244A;
+}
+
+html.fun body, html.fun body *:not(pre):not(code) { font-family: 'Rubik', 'Heebo', sans-serif !important; }
+html.fun body { background: var(--bg); }
+html.fun .wrap { padding-top: 22px; }
+
+/* header */
+html.fun h1 { font-weight: 800; font-size: 30px; color: var(--fun-green); letter-spacing: 0; }
+html.fun .sub { font-weight: 500; font-size: 14px; }
+html.fun .settings-toggle, html.fun .head-actions button {
+  border: 2px solid var(--line); border-radius: 14px; box-shadow: 0 3px 0 var(--fun-shade); background: var(--surface);
+  color: var(--ink-soft); font-weight: 700; padding: 7px 12px;
+}
+
+/* tabs -> chunky chips */
+html.fun .tabs { border-bottom: 0; gap: 8px; padding: 2px 2px 8px; margin: 16px -2px 14px; }
+html.fun .tab {
+  border: 2px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 3px 0 var(--fun-shade);
+  padding: 8px 14px; font-weight: 700; color: var(--ink-soft);
+}
+html.fun .tab.active { background: var(--fun-green); border-color: var(--fun-green); box-shadow: 0 3px 0 var(--fun-green-dk); color: #fff; }
+html.fun .tab.active::after { display: none; }
+html.fun .tab:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--fun-shade); }
+
+/* views pop in */
+html.fun .view.active { animation: funPop .32s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes funPop { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+
+/* chunky buttons */
+html.fun .nav-btn, html.fun .test-btn, html.fun .kp-btn, html.fun .kseg button, html.fun .speed-btn, html.fun .cw-umlaut-btn,
+html.fun .cw-zoom-btn, html.fun .kater-know-btn, html.fun .kater-unknow-btn, html.fun .kater-reveal-btn, html.fun .kater-vocab-jump-btn,
+html.fun .kater-audio-part-btn, html.fun .kater-audio-mark-btn, html.fun .kater-audio-clear-btn, html.fun .flow-link-btn, html.fun .ext-link,
+html.fun .daily-focus-btn, html.fun .note-save-btn, html.fun .note-edit-btn, html.fun .mnem-clear-btn, html.fun .kater-note-add, html.fun .weak-toggle-row button, html.fun .game-selector button {
+  border: 2px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--fun-blue-dk);
+  box-shadow: 0 4px 0 var(--fun-shade); font-weight: 700; padding-top: 11px; padding-bottom: 11px; transition: transform .08s, box-shadow .08s;
+}
+html.fun .nav-btn:active, html.fun .test-btn:active, html.fun .kp-btn:active, html.fun .kseg button:active, html.fun .speed-btn:active,
+html.fun .kater-know-btn:active, html.fun .kater-unknow-btn:active, html.fun .kater-reveal-btn:active, html.fun .daily-focus-btn:active {
+  transform: translateY(3px); box-shadow: 0 1px 0 var(--fun-shade); opacity: 1;
+}
+html.fun .nav-btn.active-toggle, html.fun .kseg button.on, html.fun .speed-btn.selected, html.fun .kater-audio-part-btn.on, html.fun .selected {
+  background: var(--accent-soft); border-color: var(--fun-blue); color: var(--fun-blue-dk); box-shadow: 0 4px 0 var(--fun-blue);
+}
+html.fun .kseg { background: transparent; padding: 0; gap: 8px; }
+html.fun .kseg button { box-shadow: 0 4px 0 var(--fun-shade); }
+html.fun .kseg button.on { box-shadow: 0 4px 0 var(--fun-blue); }
+html.fun .kater-know-btn { background: var(--fun-green); border-color: var(--fun-green); color: #fff; box-shadow: 0 4px 0 var(--fun-green-dk); }
+html.fun .kater-unknow-btn { color: var(--fun-red-dk); }
+html.fun .kater-reveal-btn, html.fun .daily-focus-btn, html.fun .note-save-btn { background: var(--fun-blue); border-color: var(--fun-blue); color: #fff; box-shadow: 0 4px 0 var(--fun-blue-dk); }
+html.fun .kp-play, html.fun .kater-audio-play-btn { background: var(--fun-green); border-color: var(--fun-green); color: #fff; box-shadow: 0 4px 0 var(--fun-green-dk); }
+
+/* round speaker buttons */
+html.fun .play-btn, html.fun .play-btn-sm, html.fun .grid-card-speak, html.fun .flow-speak-btn, html.fun .cw-clue-speak {
+  border: 0; background: var(--fun-blue); color: #fff; box-shadow: 0 3px 0 var(--fun-blue-dk); transition: transform .08s, box-shadow .08s;
+}
+html.fun .play-btn:active, html.fun .play-btn-sm:active { transform: translateY(2px) scale(.97); box-shadow: 0 1px 0 var(--fun-blue-dk); }
+html.fun .play-btn.speaking { background: var(--fun-green); box-shadow: 0 3px 0 var(--fun-green-dk); color: #fff; animation: funPulse .9s infinite; }
+@keyframes funPulse { 50% { transform: scale(1.1); } }
+
+/* cards */
+html.fun .sentence-row, html.fun .kater-line-card, html.fun .check-card, html.fun .settings-panel, html.fun .home-tile, html.fun .home-row,
+html.fun .daily-focus-card, html.fun .routine-step, html.fun .kq-card, html.fun .kater-flat-card, html.fun .mnem-card, html.fun .note-panel,
+html.fun .verb-item, html.fun .progress-item, html.fun .gender-card, html.fun .kater-practice-card, html.fun .streak-gameover,
+html.fun .memory-card, html.fun .flow-item, html.fun .kater-scene-summary, html.fun .scenes-summary, html.fun .kater-audio-bar {
+  border: 2px solid var(--line); border-radius: 18px; box-shadow: 0 4px 0 var(--fun-shade); background: var(--surface);
+}
+html.fun .home-list { background: none; border: 0; border-radius: 0; overflow: visible; display: flex; flex-direction: column; gap: 10px; }
+html.fun .home-row { padding: 12px 14px; }
+html.fun .home-tile, html.fun .home-row { transition: transform .08s, box-shadow .08s; }
+html.fun .home-tile:active, html.fun .home-row:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--fun-shade); background: var(--surface); opacity: 1; }
+html.fun .home-tile-icon, html.fun .home-row-icon { filter: drop-shadow(0 2px 0 rgba(0,0,0,.08)); }
+html.fun .home-row-icon { background: var(--accent-soft); border-radius: 14px; }
+html.fun .home-row-label, html.fun .home-tile-label { font-weight: 700; }
+html.fun .home-group-title { font-weight: 800; color: var(--ink-soft); letter-spacing: .02em; }
+html.fun .home-hello { font-weight: 800; }
+html.fun .vocab-row { border: 2px solid var(--line); border-radius: 16px; box-shadow: 0 3px 0 var(--fun-shade); padding: 10px 12px; margin-bottom: 9px; }
+html.fun .flashcard-face { border: 2px solid var(--line); border-radius: 22px; box-shadow: 0 5px 0 var(--fun-shade); }
+html.fun .flashcard-back { background: var(--accent-soft); border-color: var(--fun-blue); box-shadow: 0 5px 0 var(--fun-blue); }
+html.fun .kater-flat-card { border-radius: 22px; box-shadow: 0 5px 0 var(--fun-shade); }
+html.fun .kater-line-card.kater-line-highlight { box-shadow: 0 4px 0 var(--fun-green-dk); border-color: var(--fun-green); }
+html.fun .sync-active { background: var(--fun-ok-bg); border-radius: 12px; }
+
+/* inputs */
+html.fun input[type=text], html.fun input[type=search], html.fun input:not([type]), html.fun textarea, html.fun select,
+html.fun .global-search-input, html.fun .check-input, html.fun .note-input, html.fun .mnem-note-input, html.fun .kater-scene-select, html.fun .vocab-category-select {
+  border: 2px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font-weight: 500;
+}
+html.fun input:focus, html.fun textarea:focus, html.fun select:focus { outline: none; border-color: var(--fun-blue); box-shadow: 0 0 0 3px rgba(28,176,246,.2); }
+
+/* badges and tags */
+html.fun .category-title, html.fun .search-section-title, html.fun .grammar-section-title { font-weight: 800; border-radius: 12px; padding: 4px 12px; }
+html.fun .vocab-pos, html.fun .gender-tag { font-weight: 700; border-radius: 10px; }
+
+/* quiz / games */
+html.fun .kq-option, html.fun .mc-option, html.fun .puzzle-chip, html.fun .cw-cell {
+  border: 2px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 4px 0 var(--fun-shade); font-weight: 600; color: var(--ink);
+}
+html.fun .kq-option:active, html.fun .mc-option:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--fun-shade); background: var(--surface); }
+html.fun .kq-option.kq-correct, html.fun .mc-option.mc-correct { background: var(--fun-ok-bg); border-color: var(--fun-green); color: var(--fun-green-dk); box-shadow: 0 4px 0 var(--fun-green); animation: funBounce .4s; }
+html.fun .kq-option.kq-wrong, html.fun .mc-option.mc-wrong { background: var(--fun-bad-bg); border-color: var(--fun-red); color: var(--fun-red-dk); box-shadow: 0 4px 0 var(--fun-red); animation: funShake .4s; }
+@keyframes funBounce { 0%,100% { transform: scale(1); } 40% { transform: scale(1.04); } }
+@keyframes funShake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+html.fun .check-result-correct, html.fun .cw-result-correct, html.fun .puzzle-result-correct { background: var(--fun-ok-bg); border-radius: 16px; color: var(--fun-green-dk); font-weight: 700; }
+html.fun .check-result-wrong, html.fun .cw-result-wrong, html.fun .puzzle-result-wrong { background: var(--fun-bad-bg); border-radius: 16px; color: var(--fun-red-dk); font-weight: 700; }
+
+/* progress bits */
+html.fun .kq-progress, html.fun .sequence-bar, html.fun .cw-level-progress { border-radius: 999px; }
+html.fun .progress-dot { border-radius: 50%; }
+html.fun .routine-streak { font-weight: 800; color: var(--fun-orange); }
+
+/* speaking test: use the same tokens */
+html.fun .sp-overlay { background: var(--bg); }
+html.fun .sp-card { box-shadow: 0 6px 0 var(--fun-shade); }
+html.fun .sp-card.ok { animation: funBounce .45s; }
+html.fun .sp-mic, html.fun .sp-next, html.fun .sp-type button { font-weight: 800; }
+html.fun .sp-chip { box-shadow: 0 4px 0 var(--fun-shade); }
+html.fun .sp-chip.on { box-shadow: 0 4px 0 var(--fun-blue); }
+html.fun .sp-title { font-weight: 800; }
+
+@media (prefers-reduced-motion: reduce) { html.fun * { animation: none !important; transition: none !important; } }
+
+/* hero buttons + bottom audio bar */
+html.fun button[onclick*="Speak"] { background: var(--fun-green); border-color: var(--fun-green); color: #fff; box-shadow: 0 4px 0 var(--fun-green-dk); }
+html.fun button[onclick*="Speak"]:active { box-shadow: 0 1px 0 var(--fun-green-dk); }
+html.fun .kater-audio-bar { border-radius: 20px 20px 0 0; border-bottom: 0; box-shadow: 0 -2px 0 var(--fun-shade); }
+html.fun .sp-card.ok { background: var(--fun-ok-bg); border-color: var(--fun-green); color: var(--tag-2); box-shadow: 0 6px 0 var(--fun-green); }
+html.fun .sp-card.bad, html.fun .sp-card.wrongtry { background: var(--fun-bad-bg); border-color: var(--fun-red); color: var(--tag-3); box-shadow: 0 6px 0 var(--fun-red); }
+html.fun .sp-banner { background: var(--fun-bad-bg); border-color: var(--fun-red); color: var(--tag-3); }
+html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
+</style>
+<!--FUN-END-->
 </head>
 <body>
 <div class="wrap">
