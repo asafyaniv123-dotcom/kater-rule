@@ -1865,7 +1865,7 @@
     else heard = '<div class="sp-heard"></div>';
     let actions;
     if (S.state !== 'ask') {
-      actions = '<div class="sp-actions"><button class="sp-next" id="spNext">' + (S.state === 'ok' ? 'המשך' : 'הבנתי, הלאה') + '</button></div>';
+      actions = '<div class="sp-actions"><button class="sp-redo" id="spRedo" title="השמעה">🔊</button><button class="sp-next" id="spNext">' + (S.state === 'ok' ? 'המשך' : 'הבנתי, הלאה') + '</button></div>';
     } else if (S.typing || !SR) {
       actions = '<div class="sp-type"><input id="spInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="הקלידו בגרמנית"><button id="spCheck">בדיקה</button></div>';
     } else {
@@ -1894,7 +1894,7 @@
     if ($('spMic')) $('spMic').onclick = () => { if (S.live) { stopLive(); S.msg = ''; render(); } else startLive(); };
     if ($('spDbgBtn')) $('spDbgBtn').onclick = () => { S.debug = !S.debug; render(); };
     if ($('spLiveStop')) $('spLiveStop').onclick = () => { stopLive(); render(); };
-    if ($('spRedo')) $('spRedo').onclick = () => { speakWord(cur().answer, true); };
+    if ($('spRedo')) $('spRedo').onclick = () => { const c = cur(); speakWord(c.display || c.answer, true); };
     if ($('spNext')) $('spNext').onclick = advance;
     if ($('spSkip')) $('spSkip').onclick = () => { reveal(false); };
     if ($('spToggle')) $('spToggle').onclick = () => {
@@ -1911,9 +1911,10 @@
   function speakWord(text, manual) {
     if (!manual && !(S && S.cfg && S.cfg.speak)) return;
     const resume = S && S.live && !S.typing;
-    if (resume) { S.muteUntil = Date.now() + 2600; stopRec(); } // playing sound can cut the microphone on a phone: pause it, then reopen
+    const ms = Math.min(6000, Math.max(2000, 1000 + 130 * String(text).length));
+    if (resume) { S.muteUntil = Date.now() + ms + 300; stopRec(); clearTimeout(S.resumeT); } // playing sound can cut the microphone on a phone: pause it, then reopen
     try { if (typeof window.speak === 'function') window.speak(text, null); } catch (e) {}
-    if (resume) later(() => { if (S && S.live && !S.done && !S.typing && !rec) openRec(); }, 2300);
+    if (resume) S.resumeT = later(() => { if (S && S.live && !S.done && !S.typing && !rec) openRec(); }, ms);
   }
 
   // ----- continuous listening: one press, keeps going card after card until stopped -----
@@ -2002,7 +2003,7 @@
     S.state = 'ok'; S.msg = ''; S.wrong = false; S.wrongHeard = ''; S.heard = '';
     S.muteUntil = Date.now() + 1500;
     render();
-    speakWord(cur().answer);
+    speakWord(cur().display || cur().answer);
     later(() => { if (S && S.state === 'ok') advance(); }, 1700);
   }
   function onWrong(heard) {
@@ -2023,10 +2024,9 @@
     S.state = 'bad'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
     S.muteUntil = Date.now() + 1500;
     render();
-    speakWord(c.answer);
+    speakWord(c.display || c.answer, true); // after a miss the word is always played, so the person hears how it should sound
     // practise it once more at the end of the round
     if (!c.requeued) S.queue.push({ ref: c.ref, prompt: c.prompt, answer: c.answer, display: c.display, hint: c.hint, requeued: true });
-    if (S.live) later(() => { if (S && S.state === 'bad' && S.live) advance(); }, 3800); // hands-free: keep going
   }
   function advance() {
     clearTimers();
@@ -2035,6 +2035,7 @@
     S.enter = true;
     S.idx++; S.attempts = 0; S.state = 'ask'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
     S.muteUntil = Date.now() + 350; consumeNow();
+    if (S.live && !S.typing && !S.done && !rec) { clearTimeout(S.resumeT); later(openRec, 150); } // the word that was playing is cut off, so listen again right away
     if (S.idx >= S.queue.length) { S.done = true; S.idx = S.queue.length; stopLive(); }
     render();
   }
