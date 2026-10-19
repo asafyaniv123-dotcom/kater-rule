@@ -2149,11 +2149,12 @@
     if (SCENES) return SCENES;
     const C = $ctx(), seen = new Map(), out = [];
     C.lines.forEach((l, i) => {
+      if (C.stage && C.stage(l)) return; // pure stage directions are not tested
       const k = l.part + '|' + l.scene;
       if (!seen.has(k)) { const o = { key: k, part: l.part, name: l.scene, lines: [], vocab: [], span: 0, mineSync: 0 }; seen.set(k, o); out.push(o); }
       seen.get(k).lines.push(i);
     });
-    C.vocab.forEach((v, i) => { const o = seen.get(v.part + '|' + v.scene); if (o) o.vocab.push(i); });
+    C.vocab.forEach((v, i) => { if (v.dir) return; const o = seen.get(v.part + '|' + v.scene); if (o) o.vocab.push(i); });
     out.forEach(o => {
       const arr = C.sync[o.part] || [];
       let a = -1; arr.forEach((e, i) => { if (a < 0 && e.sc === o.name) a = i; });
@@ -2175,7 +2176,7 @@
     sc.vocab.forEach(vi => {
       const v = C.vocab[vi]; if (!v || usedLine.has(v.lineIndex)) return;
       const line = C.lines[v.lineIndex]; if (!line) return;
-      const text = line.de.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+      const text = C.strip(line.de);
       const base = String(v.de || '').replace(/\(.*?\)/g, '').trim().split(/[\s/,]+/)[0];
       if (!base || base.length < 3) return;
       const isVerb = /פועל/.test(v.pos || '');
@@ -2186,7 +2187,7 @@
         const m = re.exec(text);
         if (m && text.split(' ').length >= 3) {
           const blanked = text.replace(re, (all, pre) => pre + '_____');
-          out.push({ ref: v.lineIndex, prompt: blanked, answer: m[2], display: m[2], hint: line.he, sub: text, ltr: true });
+          out.push({ ref: v.lineIndex, prompt: blanked, answer: m[2], display: m[2], hint: C.strip(line.he) || line.he, sub: text, ltr: true });
           usedLine.add(v.lineIndex); break;
         }
       }
@@ -2488,8 +2489,9 @@
     return idxs.map(i => {
       const l = C.lines[i], arr = C.sync[l.part] || [];
       let prev = null; const j = arr.findIndex(e => e.k === i);
-      if (j > 0) { for (let q = j - 1; q >= 0 && q >= j - 3; q--) { if (arr[q].k < 0) { prev = arr[q]; break; } } }
-      return { idx: i, part: l.part, cue: l.cue, he: l.he, de: l.de, prev: prev, mode };
+      const isDir = e => /^\s*\([^()]*\)\s*$/.test(e.e || '') || !C.strip(e.d);
+      if (j > 0) { for (let q = j - 1; q >= 0 && q >= j - 4; q--) { if (arr[q].k < 0 && !isDir(arr[q])) { prev = Object.assign({}, arr[q], { d: C.strip(arr[q].d) }); break; } } }
+      return { idx: i, part: l.part, cue: C.strip(l.cue) || l.cue, he: C.strip(l.he) || l.he, de: C.strip(l.de), prev: prev, mode };
     });
   }
 
@@ -2525,7 +2527,7 @@
       return recite({ title: 'חזרה · ' + sc.name, intro: 'חזרה קצרה: רק הרמז מהבמה, אתם אומרים בקול.', items: linesItems(idxs, 'eval'), mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
     }
     if (step.type === 'weak') {
-      const kn = new Set(C.known()); const weak = []; C.lines.forEach((l, i) => { if (!kn.has(i)) weak.push(i); });
+      const kn = new Set(C.known()); const weak = []; C.lines.forEach((l, i) => { if (!kn.has(i) && !(C.stage && C.stage(l))) weak.push(i); });
       for (let i = weak.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = weak[i]; weak[i] = weak[j]; weak[j] = t; }
       if (!weak.length) { finish(step, { ratio: 1 }); return; }
       return recite({ title: 'חיזוק · השורות החלשות', intro: 'השורות שעוד לא סומנו כידועות. רק הרמז מהבמה.', items: linesItems(weak.slice(0, 30), 'eval'), mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
@@ -3473,6 +3475,25 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     { de: "Beförderung", he: "קידום (בתפקיד)", pos: "שם עצם", gender: "die", part: "2", page: 53, scene: "הסיום", lineIndex: 179, form: "Beförderung" },
   ];
 
+  // stage directions: text in parentheses and notes about what the actor physically does are not part of what is tested
+  function katerStrip(s) { return String(s || '').replace(/\([^)]*\)?/g, ' ').replace(/\s+/g, ' ').replace(/^[\s:.…,\-–]+/, '').trim(); }
+  function katerStageOnly(l) { return !l || /^\s*\([^()]*\)\s*$/.test(l.he || '') || !katerStrip(l.de); }
+  function katerInDirOnly(v) {
+    const l = KATER_LINES[v.lineIndex]; if (!l) return false;
+    if (katerStageOnly(l)) return true;
+    const dirs = (String(l.de).match(/\([^)]*\)?/g) || []).join(' ').toLowerCase();
+    if (!dirs) return false;
+    const out = katerStrip(l.de).toLowerCase();
+    const base = String(v.de || '').toLowerCase().replace(/\([^)]*\)/g, '').replace(/^(der|die|das)\s+/, '').trim().split(/[\s/,]+/)[0];
+    if (!base) return false;
+    const verb = /פועל/.test(v.pos || '');
+    const stem = (verb && /en$/.test(base) && base.length > 5) ? base.slice(0, -2) : base;
+    const hit = txt => txt.split(/[^a-zäöüß]+/).some(t => t && (t === base || (stem.length >= 4 && t.indexOf(stem) === 0)));
+    return hit(dirs) && !hit(out);
+  }
+  KATER_VOCAB.forEach(v => { try { v.dir = katerInDirOnly(v); } catch (e) { v.dir = false; } });
+  function katerVocabLive() { return KATER_VOCAB.filter(v => !v.dir); }
+
   const tagClasses = ['tag-1','tag-2','tag-3','tag-4','tag-5'];
 
   function tagIndexFor(category) {
@@ -3654,6 +3675,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     });
     const katerVocabMatches = [];
     KATER_VOCAB.forEach((v, i) => {
+      if (v.dir) return;
       if ((qDe && normalizeDe(v.de).includes(qDe)) || (qHe && normalizeHe(v.he).includes(qHe))) katerVocabMatches.push(i);
     });
     if (!katerLineMatches.length && !katerVocabMatches.length) {
@@ -4749,7 +4771,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const unit = n => isVocab ? (n === 1 ? 'מילה אחת' : n + ' מילים') : katerCountLabel(n);
     scenes.forEach(s => {
       s.items = isVocab
-        ? KATER_VOCAB.map((v, i) => i).filter(i => katerSceneKey(KATER_VOCAB[i]) === s.key)
+        ? KATER_VOCAB.map((v, i) => i).filter(i => !KATER_VOCAB[i].dir && katerSceneKey(KATER_VOCAB[i]) === s.key)
         : s.idxs;
     });
     const total = scenes.reduce((a, s) => a + s.items.length, 0);
@@ -4794,7 +4816,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerVocabNewKeys() { katerVocabKeys = KATER_VOCAB.map(() => Math.random()); }
   katerVocabNewKeys();
   function katerVocabFilteredList() {
-    const list = KATER_VOCAB.filter(v => (katerPart === 'all' || v.part === katerPart) && (katerScene === 'all' || katerSceneKey(v) === katerScene));
+    const list = KATER_VOCAB.filter(v => !v.dir && (katerPart === 'all' || v.part === katerPart) && (katerScene === 'all' || katerSceneKey(v) === katerScene));
     if (katerVocabShuffle) return list.sort((a, b) => katerVocabKeys[KATER_VOCAB.indexOf(a)] - katerVocabKeys[KATER_VOCAB.indexOf(b)]);
     // new words were appended to the data, so sort by position in the play (stable for words on the same line)
     return list.sort((a, b) => (a.part === b.part ? 0 : (a.part < b.part ? -1 : 1)) || a.lineIndex - b.lineIndex);
@@ -5016,7 +5038,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function buildKaterQueue() {
     let idxs = katerFilteredIndices();
     if (katerOrder === 'shuffle') idxs = shuffleArray(idxs);
-    katerQueue = idxs;
+    katerQueue = idxs.filter(i => !katerStageOnly(KATER_LINES[i]));
     katerIndex = 0;
     katerRevealed = false;
   }
@@ -5054,7 +5076,9 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         ${katerWordsOn ? '<button class="kater-words-toggle" onclick="flipAllKaterWords()">הצג / הסתר את כל הפירושים</button>' : ''}
       </div>`;
     if (!katerWordsOn) return `<div class="flow-item kater-words">${head}</div>`;
-    const nodes = g.map((pair, ni) => {
+    let depth = 0;
+    const gf = g.filter(pair => { const t = String(pair[0]); const o = (t.match(/\(/g) || []).length, c = (t.match(/\)/g) || []).length; const was = depth > 0 || o > 0; depth = Math.max(0, depth + o - c); return !was; });
+    const nodes = gf.map((pair, ni) => {
       const tok = pair[0], gloss = pair[1];
       const wid = `kater-word-${idx}-${ni}`;
       const speakable = /[A-Za-zÄÖÜäöüß]/.test(tok);
@@ -5081,7 +5105,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
   function katerQuizBuild(restrictTo) {
     const pool = restrictTo || katerFilteredIndices();
-    const queue = shuffleArray(pool.filter(i => KATER_LINES[i].he && KATER_LINES[i].de));
+    const queue = shuffleArray(pool.filter(i => KATER_LINES[i].he && KATER_LINES[i].de && !katerStageOnly(KATER_LINES[i])));
     katerQuiz = { key: katerPart + '|' + katerScene, queue, i: 0, score: 0, wrong: [], answered: null, q: null, done: false };
     katerQuizPrepare();
   }
@@ -5208,12 +5232,12 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       <div class="flashcard-counter">${katerIndex + 1} / ${katerQueue.length} · ידועים בסבב הזה: ${knownCount}</div>
       <div class="kater-flat-card" id="katerCard" onclick="revealKaterCard()">
         <div class="flashcard-category">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}${line.page ? ' · עמ׳ ' + escapeHtml(String(line.page)) : ''}</div>
-        <div class="kater-cue">${escapeHtml(line.cue)}</div>
+        <div class="kater-cue">${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
         ${katerRevealed ? `
           <div class="kater-flat-sep"></div>
-          <div class="kater-flat-de">${escapeHtml(line.de)}</div>
-          <button class="play-btn" id="${speakId}" onclick="event.stopPropagation(); speak('${escapeJs(line.de)}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
-          <div class="kater-flat-he">${escapeHtml(line.he)}</div>`
+          <div class="kater-flat-de">${escapeHtml(katerStrip(line.de))}</div>
+          <button class="play-btn" id="${speakId}" onclick="event.stopPropagation(); speak('${escapeJs(katerStrip(line.de))}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
+          <div class="kater-flat-he">${escapeHtml(katerStrip(line.he) || line.he)}</div>`
         : `<div class="flashcard-hint">הקישו כדי לראות את המשפט</div>`}
       </div>
       ${katerWordsHtml(idx)}
@@ -5309,19 +5333,19 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       if (!katerRevealed) {
         body = `
           <div class="check-card kater-practice-card">
-            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(line.cue)}</div>
+            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
             <div class="kater-practice-cue">נסו לומר את המשפט של החתול בעל פה, ואז הקישו להצגה</div>
             <button class="kater-reveal-btn" onclick="revealKaterLine()">הראה את המשפט</button>
           </div>`;
       } else {
         body = `
           <div class="check-card kater-practice-card">
-            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(line.cue)}</div>
+            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
             <div class="kater-de-row">
-              <div class="kater-de">${escapeHtml(line.de)}</div>
-              <button class="play-btn play-btn-sm" id="${speakId}" onclick="speak('${escapeJs(line.de)}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
+              <div class="kater-de">${escapeHtml(katerStrip(line.de))}</div>
+              <button class="play-btn play-btn-sm" id="${speakId}" onclick="speak('${escapeJs(katerStrip(line.de))}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
             </div>
-            <div class="kater-he">${escapeHtml(line.he)}</div>
+            <div class="kater-he">${escapeHtml(katerStrip(line.he) || line.he)}</div>
             <div class="kater-judge-row">
               <button class="kater-know-btn" onclick="judgeKaterLine(true)">✓ ידעתי</button>
               <button class="kater-unknow-btn" onclick="judgeKaterLine(false)">✗ עוד לא</button>
@@ -5422,14 +5446,14 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function spCleanHe(s) { return String(s || '').replace(/\s*\([^)]*[A-Za-z][^)]*\)/g, '').replace(/\s+/g, ' ').trim(); }
   function spKaterGroups() {
     const known = new Set(getKaterVocabKnown());
-    const g = [{ id: 'all', label: 'כל אוצר המילים', count: KATER_VOCAB.length, section: '' }];
-    const unk = KATER_VOCAB.filter((v, i) => !known.has(i)).length;
+    const g = [{ id: 'all', label: 'כל אוצר המילים', count: katerVocabLive().length, section: '' }];
+    const unk = KATER_VOCAB.filter((v, i) => !v.dir && !known.has(i)).length;
     if (unk) g.push({ id: 'unk', label: 'רק מילים שעוד לא ידעתי', count: unk, section: '' });
-    ['1', '2'].forEach(p => { const n = KATER_VOCAB.filter(v => v.part === p).length; if (n) g.push({ id: 'p:' + p, label: 'חלק ' + p + ' במחזה', count: n, section: 'לפי חלק' }); });
+    ['1', '2'].forEach(p => { const n = KATER_VOCAB.filter(v => !v.dir && v.part === p).length; if (n) g.push({ id: 'p:' + p, label: 'חלק ' + p + ' במחזה', count: n, section: 'לפי חלק' }); });
     const seen = new Set();
     KATER_LINES.forEach(l => {
       const k = katerSceneKey(l); if (seen.has(k)) return; seen.add(k);
-      const n = KATER_VOCAB.filter(v => katerSceneKey(v) === k).length;
+      const n = KATER_VOCAB.filter(v => !v.dir && katerSceneKey(v) === k).length;
       if (n) g.push({ id: 's:' + k, label: 'חלק ' + l.part + ' · ' + l.scene, count: n, section: 'לפי סצנה' });
     });
     return g;
@@ -5444,8 +5468,8 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       getGroups: spKaterGroups,
       getItems: ({ group, count, preferNew }) => {
         const known = new Set(getKaterVocabKnown());
-        let pool = KATER_VOCAB;
-        if (group === 'unk') pool = pool.filter((v, i) => !known.has(i));
+        let pool = katerVocabLive();
+        if (group === 'unk') pool = pool.filter(v => !known.has(KATER_VOCAB.indexOf(v)));
         else if (group.indexOf('p:') === 0) pool = pool.filter(v => v.part === group.slice(2));
         else if (group.indexOf('s:') === 0) pool = pool.filter(v => katerSceneKey(v) === group.slice(2));
         let pick;
@@ -5469,7 +5493,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
   // <<COACHADAPT-START>>
   window.KATER_COACH_CTX = {
-    lines: KATER_LINES, vocab: KATER_VOCAB, sync: KATER_SYNC,
+    lines: KATER_LINES, vocab: KATER_VOCAB, sync: KATER_SYNC, stage: katerStageOnly, strip: katerStrip,
     known: getKaterKnown, setKnown: setKaterKnown, vocabKnown: getKaterVocabKnown,
     speakDe: function (t) { try { speak(String(t).replace(/\([^)]*\)/g, ' ')); } catch (e) {} },
     playLine: function (i) { try { playKaterLineAudio(i); } catch (e) {} },
@@ -5494,7 +5518,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         title: 'אמרו את המילה בגרמנית', storeKey: 'delearn_kater_sp_coach',
         onResult: (idx, ok) => { const set = new Set(getKaterVocabKnown()); if (ok) set.add(idx); else set.delete(idx); safeSet('delearn_kater_vocab_known', JSON.stringify([...set])); },
         getGroups: spKaterGroups,
-        getItems: ({ group }) => KATER_VOCAB.filter(v => katerSceneKey(v) === group.slice(2)).map(v => ({ ref: KATER_VOCAB.indexOf(v), prompt: spCleanHe(v.he), answer: v.de, display: (v.gender ? v.gender + ' ' : '') + v.de, hint: v.pos }))
+        getItems: ({ group }) => KATER_VOCAB.filter(v => !v.dir && katerSceneKey(v) === group.slice(2)).map(v => ({ ref: KATER_VOCAB.indexOf(v), prompt: spCleanHe(v.he), answer: v.de, display: (v.gender ? v.gender + ' ' : '') + v.de, hint: v.pos }))
       }, o, { autostart: true }));
     }
   };
