@@ -2271,7 +2271,7 @@
         if (!isFuture) {
           if (n < GOAL) h += '<div class="dl-btns"><button class="dl-btn" id="dlAdd">✋ בחר ' + (GOAL - n) + ' מילים' + (isToday ? ' להיום' : '') + '</button></div>';
           if (n) h += '<div class="dl-btns"><button class="dl-btn blue" id="dlStudy">🥣 שנן</button><button class="dl-btn blue" id="dlTest">🎤 בחן אותי</button></div>';
-          h += (n ? ids.map(id => { const it = by.get(String(id)); return '<div class="dl-row"><i class="dl-dot' + (kn.has(id) ? ' k' : '') + '"></i><div class="t"><div class="d">' + esc(it.de) + '</div><div class="h">' + esc(it.he) + '</div></div><button data-say="' + esc(id) + '" aria-label="השמע">🔊</button><button data-rm="' + esc(id) + '" aria-label="הסר" style="color:var(--ink-soft)">✕</button></div>'; }).join('') : '<div class="dl-empty">לחצו על "בחר" ובחרו בעצמכם ' + GOAL + ' מילים ליום הזה. אפשר לבקש הצעות מהמילים שעוד לא שולטים בהן.</div>');
+          h += (n ? ids.map(id => { const it = by.get(String(id)); return '<div class="dl-row"><i class="dl-dot' + (kn.has(id) ? ' k' : '') + '"></i><div class="t"><div class="d">' + esc(it.de) + '</div><div class="h">' + esc(it.he) + '</div>' + (cfg.getNote && cfg.getNote(it) ? '<div class="h" style="color:#8a6a00">💡 ' + esc(cfg.getNote(it)) + '</div>' : '') + '</div><button data-say="' + esc(id) + '" aria-label="השמע">🔊</button><button data-rm="' + esc(id) + '" aria-label="הסר" style="color:var(--ink-soft)">✕</button></div>'; }).join('') : '<div class="dl-empty">לחצו על "בחר" ובחרו בעצמכם ' + GOAL + ' מילים ליום הזה. אפשר לבקש הצעות מהמילים שעוד לא שולטים בהן.</div>');
           if (n >= GOAL) h += '<div class="dl-btns"><button class="dl-btn sec" id="dlMore">+ בחר עוד מילים</button></div>';
         }
         h += '</div></div>';
@@ -2351,6 +2351,12 @@
   @keyframes bwWig { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
   .bw-done { text-align: center; }
   .bw-done .bw-big { font-size: 26px; font-weight: 800; margin: 6px 0; }
+  .bw-note { width: 100%; max-width: 380px; margin: 10px auto 0; text-align: center; }
+  .bw-note-add { border: 2px dashed var(--line, #d5d5d5); background: none; color: var(--ink-soft, #777); border-radius: 14px; padding: 8px 14px; font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; }
+  .bw-note-show { background: #fff8d6; color: #6b5200; border: 2px solid #ffe27a; border-radius: 14px; padding: 8px 12px; font-size: 15px; text-align: right; display: flex; gap: 8px; align-items: flex-start; }
+  .bw-note-show span { flex: 1; white-space: pre-wrap; } .bw-note-show button { background: none; border: 0; font-size: 17px; cursor: pointer; padding: 0 2px; }
+  .bw-note textarea { width: 100%; box-sizing: border-box; min-height: 64px; border: 2px solid var(--fun-blue, #1cb0f6); border-radius: 14px; padding: 9px 11px; font: inherit; font-size: 15.5px; color: inherit; background: var(--surface, #fff); resize: none; direction: rtl; }
+  .bw-note-acts { display: flex; gap: 8px; margin-top: 6px; } .bw-note-acts button { flex: 1; border: 0; border-radius: 12px; padding: 9px; font: inherit; font-weight: 800; cursor: pointer; background: var(--fun-blue, #1cb0f6); color: #fff; } .bw-note-acts button.sec { background: var(--surface, #fff); color: inherit; border: 2px solid var(--line, #e5e5e5); }
   .bw-sheet { position: absolute; inset: 0; z-index: 2; background: var(--bg, #fff); display: flex; flex-direction: column; padding: max(14px, env(safe-area-inset-top)) 16px 14px; box-sizing: border-box; }
   .bw-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-top: 8px; }
   .bw-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line, #e5e5e5); padding: 9px 2px; }
@@ -2364,7 +2370,7 @@
   function open(cfg) {
     injectCss();
     const ov = document.createElement('div'); ov.className = 'bw-ov'; document.body.appendChild(ov);
-    let cat = (cfg.categories && cfg.categories.length) ? 'all' : 'all', dir = 'he2de', queue = [], idx = 0, rev = false, busy = false, sheet = null, reviewKnown = false;
+    let editing = false, cat = (cfg.categories && cfg.categories.length) ? 'all' : 'all', dir = 'he2de', queue = [], idx = 0, rev = false, busy = false, sheet = null, reviewKnown = false;
     const byId = new Map(cfg.items.map(it => [String(it.id), it]));
     const inCat = it => cat === 'all' || it.cat === cat;
     const known = () => cfg.getKnown();
@@ -2389,6 +2395,10 @@
         const front = dir === 'he2de' ? '<div class="bw-big">' + esc(cur.he) + '</div>' + (cur.pos ? '<div class="bw-small">' + esc(cur.pos) + '</div>' : '') : '<div class="bw-big bw-de">' + esc(cur.de) + '</div>';
         const back = dir === 'he2de' ? '<div class="bw-big bw-de">' + esc(cur.de) + '</div><button class="bw-say" id="bwSay" aria-label="השמע">🔊</button><div class="bw-small">' + esc(cur.he) + '</div>' : '<div class="bw-big">' + esc(cur.he) + '</div><button class="bw-say" id="bwSay" aria-label="השמע">🔊</button><div class="bw-small bw-de">' + esc(cur.de) + '</div>';
         h += '<div class="bw-stack"><div class="bw-layer l2"></div><div class="bw-layer l1"></div><div class="bw-card' + (rev ? ' rev' : '') + '" id="bwCard">' + (rev ? back : front + '<div class="bw-small" style="margin-top:6px">' + (dir === 'he2de' ? 'אמרו את המילה בגרמנית' : 'מה המשמעות?') + '</div>') + '</div></div>';
+        if (rev && cfg.getNote) {
+          const nt = cfg.getNote(cur) || '';
+          h += '<div class="bw-note">' + (editing ? '<textarea id="bwNoteTx" placeholder="אסוציאציה, משפט, צליל דומה בעברית…">' + esc(nt) + '</textarea><div class="bw-note-acts"><button id="bwNoteSave">שמירה</button><button class="sec" id="bwNoteCancel">ביטול</button></div>' : nt ? '<div class="bw-note-show"><span>💡 ' + esc(nt) + '</span><button id="bwNoteEdit" aria-label="עריכה">✏️</button></div>' : '<button class="bw-note-add" id="bwNoteEdit">💡 איך קל לי לזכור את המילה?</button>') + '</div>';
+        }
         h += '<div class="bw-actions">' + (rev ? '<div class="bw-rate"><button class="r" data-s="0">לא ידעתי</button><button class="o" data-s="1">כמעט</button><button class="g" data-s="2">ידעתי</button></div>' : '<button class="bw-show" id="bwShow">הצג</button>') + '</div>';
       }
       h += '</div><div class="bw-bowls">' + bowl('learn', L) + bowl('known', K) + '</div>';
@@ -2403,6 +2413,9 @@
       if ($('bwShow')) $('bwShow').onclick = () => { rev = true; draw(); const c = queue.length && byId.get(String(queue[idx % queue.length])); if (c && cfg.speak) cfg.speak(c.de); };
       if ($('bwSay')) $('bwSay').onclick = () => { const c = byId.get(String(queue[idx % queue.length])); if (c && cfg.speak) cfg.speak(c.de); };
       if ($('bwReview')) $('bwReview').onclick = () => { queue = shuffle(knownList().map(it => it.id)).slice(0, 12); idx = 0; rev = false; reviewKnown = true; draw(); };
+      if ($('bwNoteEdit')) $('bwNoteEdit').onclick = () => { editing = true; draw(); const t = ov.querySelector('#bwNoteTx'); if (t) t.focus(); };
+      if ($('bwNoteCancel')) $('bwNoteCancel').onclick = () => { editing = false; draw(); };
+      if ($('bwNoteSave')) $('bwNoteSave').onclick = () => { const c = byId.get(String(queue[idx % queue.length])); if (c && cfg.setNote) cfg.setNote(c, $('bwNoteTx').value.trim()); editing = false; draw(); };
       ov.querySelectorAll('.bw-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
       $('bw-learn').onclick = () => openSheet('learn'); $('bw-known').onclick = () => openSheet('known');
     }
@@ -2437,7 +2450,7 @@
           queue.splice(pos, 0, id); idx = 0;
         }
         if (!reviewKnown && !queue.length) rebuild();
-        rev = false; draw();
+        rev = false; editing = false; draw();
       });
     }
     function openSheet(kind) {
@@ -5920,10 +5933,13 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       status: it => dailyKatKnown().has(it.id) ? 'known' : 'new',
       priority: it => dailyKatKnown().has(it.id) ? 2 : 1,
       speak: t => { try { speak(String(t), null); } catch (e) {} },
+      getNote: it => { try { return getKaterVocabNotes()[katerVocabNoteKey(it)] || ''; } catch (e) { return ''; } },
       study: (ids, redraw) => {
         if (!window.Bowls) return;
         Bowls.open({
           title: 'שינון המילים של היום', items: byIds(ids), categories: [], allLabel: 'המילים של היום',
+          getNote: it => getKaterVocabNotes()[katerVocabNoteKey(it)] || '',
+          setNote: (it, t) => { const n = getKaterVocabNotes(); if (t) n[katerVocabNoteKey(it)] = t; else delete n[katerVocabNoteKey(it)]; safeSet('delearn_kater_vocab_notes', JSON.stringify(n)); },
           getKnown: dailyKatKnown, setKnown: setK,
           speak: t => { try { speak(String(t), null); } catch (e) {} },
           onClose: redraw
