@@ -2104,6 +2104,143 @@
 
 </script>
 <!--SPEAKMOD-END-->
+<!--DAILY-START-->
+<script>
+/* A monthly calendar of daily words: 15 new words a day, tap a day to see its words, memorise them or be tested on them. */
+(function () {
+  'use strict';
+  const GOAL = 15;
+  const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  const DOW = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const dkey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const todayKey = () => dkey(new Date());
+  const CSS = `
+  .dl-wrap { max-width: 560px; margin: 0 auto; padding: 4px 0 40px; direction: rtl; }
+  .dl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 8px; }
+  .dl-head h2 { margin: 0; font-size: 21px; font-weight: 800; }
+  .dl-nav { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; width: 40px; height: 40px; font-size: 20px; cursor: pointer; box-shadow: 0 3px 0 var(--line, #e5e5e5); }
+  .dl-streak { display: flex; gap: 10px; margin-bottom: 10px; }
+  .dl-stat { flex: 1; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 16px; box-shadow: 0 3px 0 var(--line, #e5e5e5); padding: 8px 6px; text-align: center; }
+  .dl-stat b { display: block; font-size: 22px; font-weight: 800; line-height: 1.15; } .dl-stat span { font-size: 12px; color: var(--ink-soft, #777); }
+  .dl-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; direction: rtl; }
+  .dl-dow { text-align: center; font-size: 12px; font-weight: 800; color: var(--ink-soft, #888); padding: 2px 0; }
+  .dl-day { position: relative; aspect-ratio: 1 / 1.12; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
+  .dl-day.sel { background: var(--accent-soft, #ddf4ff); box-shadow: 0 0 0 2px var(--fun-blue, #1cb0f6); }
+  .dl-day.future { opacity: .4; cursor: default; }
+  .dl-day svg { width: 100%; height: 100%; display: block; }
+  .dl-day .dn { font-size: 13px; font-weight: 800; }
+  .dl-day.today .dn { fill: var(--fun-blue, #1cb0f6); }
+  .dl-panel { margin-top: 14px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 20px; box-shadow: 0 4px 0 var(--line, #e5e5e5); padding: 14px; }
+  .dl-panel h3 { margin: 0 0 2px; font-size: 18px; font-weight: 800; } .dl-panel .sub { font-size: 13px; color: var(--ink-soft, #777); margin-bottom: 10px; }
+  .dl-btns { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  .dl-btn { flex: 1; min-width: 120px; border: 0; border-radius: 14px; padding: 12px 8px; font: inherit; font-size: 15.5px; font-weight: 800; color: #fff; cursor: pointer; background: var(--fun-green, #58cc02); box-shadow: 0 4px 0 var(--fun-green-dk, #58a700); }
+  .dl-btn.blue { background: var(--fun-blue, #1cb0f6); box-shadow: 0 4px 0 var(--fun-blue-dk, #1899d6); }
+  .dl-btn.sec { background: var(--surface, #fff); color: inherit; border: 2px solid var(--line, #e5e5e5); box-shadow: 0 3px 0 var(--line, #e5e5e5); }
+  .dl-btn:active { transform: translateY(2px); }
+  .dl-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line, #e5e5e5); padding: 8px 2px; }
+  .dl-row:last-child { border-bottom: 0; }
+  .dl-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--fun-orange, #ff9600); } .dl-dot.k { background: var(--fun-green, #58cc02); }
+  .dl-row .t { flex: 1; min-width: 0; } .dl-row .d { direction: ltr; text-align: left; font-weight: 800; } .dl-row .h { font-size: 13px; color: var(--ink-soft, #777); }
+  .dl-row button { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; padding: 4px 9px; font: inherit; font-size: 15px; cursor: pointer; }
+  .dl-empty { text-align: center; color: var(--ink-soft, #777); padding: 14px 4px; font-size: 14px; }
+  .dl-banner { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border: 2px solid var(--fun-blue, #1cb0f6); border-radius: 20px; box-shadow: 0 4px 0 var(--fun-blue, #1cb0f6); padding: 9px 14px; margin: 4px 0 14px; cursor: pointer; }
+  .dl-banner svg { width: 46px; height: 46px; flex: none; } .dl-banner b { display: block; font-size: 16px; } .dl-banner small { color: var(--ink-soft, #777); font-size: 12.5px; }
+  .dl-banner .go { margin-inline-start: auto; background: var(--fun-blue, #1cb0f6); color: #fff; font-weight: 800; border-radius: 12px; padding: 8px 14px; box-shadow: 0 3px 0 var(--fun-blue-dk, #1899d6); }
+  .dl-ov { position: fixed; inset: 0; z-index: 8400; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
+  .dl-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
+  `;
+  function injectCss() { if (document.getElementById('dlCss')) return; const s = document.createElement('style'); s.id = 'dlCss'; s.textContent = CSS; document.head.appendChild(s); }
+
+  function create(cfg) {
+    let data = {};
+    const load = () => { try { data = JSON.parse(localStorage.getItem(cfg.key) || '{}') || {}; } catch (e) { data = {}; } };
+    const save = () => { try { localStorage.setItem(cfg.key, JSON.stringify(data)); } catch (e) {} };
+    load();
+    const byId = () => new Map(cfg.items().map(it => [String(it.id), it]));
+    const wordsOf = k => (data[k] || []).filter(id => byId().has(String(id)));
+    const assigned = () => { const s = new Set(); Object.keys(data).forEach(k => data[k].forEach(id => s.add(String(id)))); return s; };
+    const complete = k => wordsOf(k).length >= GOAL;
+    function streak() {
+      let n = 0; const d = new Date(); if (!complete(dkey(d))) d.setDate(d.getDate() - 1);
+      while (complete(dkey(d))) { n++; d.setDate(d.getDate() - 1); }
+      return n;
+    }
+    function topUp(k, n) {
+      const have = wordsOf(k).length, need = Math.min(n, Math.max(0, n));
+      const add = cfg.pickNew(need, assigned());
+      data[k] = (data[k] || []).concat(add); save(); return add.length;
+    }
+    function ring(k, isSel, isToday, future, dayNum) {
+      const ids = wordsOf(k), n = ids.length, frac = Math.min(1, n / GOAL), C = 2 * Math.PI * 17;
+      const kn = cfg.getKnown(), allKnown = n >= GOAL && ids.every(id => kn.has(id));
+      const col = n >= GOAL ? (allKnown ? '#ffc800' : 'var(--fun-green, #58cc02)') : 'var(--fun-orange, #ff9600)';
+      return '<svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--line, #e5e5e5)" stroke-width="5"/>' +
+        (n ? '<circle cx="22" cy="22" r="17" fill="none" stroke="' + col + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (C * frac).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 22 22)"/>' : '') +
+        '<text class="dn" x="22" y="26.5" text-anchor="middle" font-size="13" font-weight="800" fill="currentColor">' + dayNum + '</text></svg>';
+    }
+    function miniRing(n, size) {
+      const frac = Math.min(1, n / GOAL), C = 2 * Math.PI * 17;
+      return '<svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--line, #e5e5e5)" stroke-width="5"/>' + (n ? '<circle cx="22" cy="22" r="17" fill="none" stroke="' + (n >= GOAL ? 'var(--fun-green, #58cc02)' : 'var(--fun-orange, #ff9600)') + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (C * frac).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 22 22)"/>' : '') + '<text x="22" y="26.5" text-anchor="middle" font-size="14" font-weight="800" fill="currentColor">' + n + '</text></svg>';
+    }
+    let view = new Date(); view.setDate(1); let sel = todayKey();
+    function mount(el, onExit) {
+      injectCss(); load();
+      const draw = () => {
+        const y = view.getFullYear(), m = view.getMonth(), first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate(), tk = todayKey();
+        let cells = ''; for (let i = 0; i < first.getDay(); i++) cells += '<div></div>';
+        for (let d = 1; d <= days; d++) {
+          const k = y + '-' + pad(m + 1) + '-' + pad(d), future = k > tk;
+          cells += '<button class="dl-day' + (k === sel ? ' sel' : '') + (k === tk ? ' today' : '') + (future ? ' future' : '') + '" data-k="' + k + '" aria-label="' + d + ' ' + MONTHS[m] + '">' + ring(k, k === sel, k === tk, future, d) + '</button>';
+        }
+        const ids = wordsOf(sel), n = ids.length, kn = cfg.getKnown(), by = byId();
+        const known = ids.filter(id => kn.has(id)).length, sd = sel.split('-').map(Number), isToday = sel === tk, isFuture = sel > tk;
+        const total = Object.keys(data).reduce((a, k) => a + wordsOf(k).length, 0), doneDays = Object.keys(data).filter(complete).length;
+        let h = '<div class="dl-wrap">' + (onExit ? '<div class="dl-head"><button class="dl-x" id="dlX">✕</button><h2>📅 ' + esc(cfg.title || '15 מילים ביום') + '</h2><span style="width:34px"></span></div>' : '') +
+          '<div class="dl-streak"><div class="dl-stat"><b>🔥 ' + streak() + '</b><span>ימים ברצף</span></div><div class="dl-stat"><b>' + total + '</b><span>מילים בלוח</span></div><div class="dl-stat"><b>' + doneDays + '</b><span>ימים מלאים</span></div></div>' +
+          '<div class="dl-head"><button class="dl-nav" id="dlNext" aria-label="חודש הבא">›</button><h2>' + MONTHS[m] + ' ' + y + '</h2><button class="dl-nav" id="dlPrev" aria-label="חודש קודם">‹</button></div>' +
+          '<div class="dl-grid">' + DOW.map(x => '<div class="dl-dow">' + x + '</div>').join('') + cells + '</div>';
+        h += '<div class="dl-panel"><h3>' + (isToday ? 'היום' : sd[2] + ' ' + MONTHS[sd[1] - 1]) + ' · ' + n + '/' + GOAL + ' מילים</h3><div class="sub">' + (n ? 'ידועות בקערה הירוקה: ' + known + ' מתוך ' + n : isFuture ? 'עוד לא הגיע היום הזה.' : 'עוד לא הוספת מילים ליום הזה.') + '</div>';
+        if (!isFuture) {
+          if (n < GOAL) h += '<div class="dl-btns"><button class="dl-btn" id="dlAdd">הוסף ' + (GOAL - n) + ' מילים' + (isToday ? ' להיום' : '') + '</button></div>';
+          if (n) h += '<div class="dl-btns"><button class="dl-btn blue" id="dlStudy">🥣 שנן</button><button class="dl-btn blue" id="dlTest">🎤 בחן אותי</button></div>';
+          h += (n ? ids.map(id => { const it = by.get(String(id)); return '<div class="dl-row"><i class="dl-dot' + (kn.has(id) ? ' k' : '') + '"></i><div class="t"><div class="d">' + esc(it.de) + '</div><div class="h">' + esc(it.he) + '</div></div><button data-say="' + esc(id) + '" aria-label="השמע">🔊</button><button data-rm="' + esc(id) + '" aria-label="הסר" style="color:var(--ink-soft)">✕</button></div>'; }).join('') : '<div class="dl-empty">לחצו על "הוסף" כדי לקבל ' + GOAL + ' מילים חדשות ליום הזה.</div>');
+          if (n >= GOAL) h += '<div class="dl-btns"><button class="dl-btn sec" id="dlMore">+ עוד מילה</button></div>';
+        }
+        h += '</div></div>';
+        el.innerHTML = h;
+        const $ = id => el.querySelector('#' + id);
+        if ($('dlX')) $('dlX').onclick = onExit;
+        $('dlPrev').onclick = () => { view = new Date(y, m - 1, 1); draw(); };
+        $('dlNext').onclick = () => { view = new Date(y, m + 1, 1); draw(); };
+        el.querySelectorAll('.dl-day').forEach(b => { b.onclick = () => { if (b.classList.contains('future')) return; sel = b.dataset.k; draw(); }; });
+        if ($('dlAdd')) $('dlAdd').onclick = () => { topUp(sel, GOAL - n); draw(); };
+        if ($('dlMore')) $('dlMore').onclick = () => { topUp(sel, 1); draw(); };
+        if ($('dlStudy')) $('dlStudy').onclick = () => cfg.study(ids, draw);
+        if ($('dlTest')) $('dlTest').onclick = () => cfg.test(ids, draw);
+        el.querySelectorAll('[data-say]').forEach(b => { b.onclick = () => { const it = by.get(b.dataset.say); if (it && cfg.speak) cfg.speak(it.de); }; });
+        el.querySelectorAll('[data-rm]').forEach(b => { b.onclick = () => { data[sel] = (data[sel] || []).filter(x => String(x) !== b.dataset.rm); save(); draw(); }; });
+      };
+      draw();
+    }
+    function refreshBanner(el) {
+      if (!el) return; injectCss(); load();
+      const n = wordsOf(todayKey()).length, st = streak();
+      el.innerHTML = '<div class="dl-banner">' + miniRing(n) + '<div><b>15 מילים ביום</b><small>' + (n >= GOAL ? 'היום הושלם' + (st > 1 ? ' · ' + st + ' ימים ברצף' : '') : 'היום ' + n + '/' + GOAL) + '</small></div><span class="go">' + (n >= GOAL ? 'לוח' : 'פתח') + '</span></div>';
+      el.firstChild.onclick = () => cfg.openCalendar();
+    }
+    function overlay() {
+      injectCss(); const ov = document.createElement('div'); ov.className = 'dl-ov'; document.body.appendChild(ov);
+      mount(ov, () => { ov.remove(); if (cfg.onClose) cfg.onClose(); });
+    }
+    return { mount: mount, refreshBanner: refreshBanner, overlay: overlay, _data: () => data };
+  }
+  window.Daily = { create: create };
+})();
+
+</script>
+<!--DAILY-END-->
 <!--BOWLS-START-->
 <script>
 /* Two bowls: words I know and words I'm still learning. A word moves to the green bowl only when I know it; otherwise it comes back. */
@@ -2996,6 +3133,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   </div>
 
   <div id="coachBanner"></div>
+  <div id="dailyBanner"></div>
   <div class="view active" id="view-kater"></div>
 </div>
 <div class="kater-audio-bar" id="katerAudioBar" style="display:none;">
@@ -5136,6 +5274,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         ${katerVocabShuffle ? '<button class="nav-btn" onclick="reshuffleKaterVocab()">ערבבו שוב</button>' : ''}
         <button class="nav-btn" onclick="openKaterSpeak()">🎤 בחינה בדיבור</button>
         <button class="nav-btn" onclick="openBowls()">🥣 קערות</button>
+        <button class="nav-btn" onclick="openDaily()">📅 15 ביום</button>
       </div>`;
     if (!list.length) {
       return dirRow + `<div class="vocab-missed-empty">אין מילים בסצנה הזאת.</div>`;
@@ -5694,6 +5833,57 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     });
   }
   // <<BOWLSADAPT-END>>
+
+  // <<DAILYADAPT-START>>
+  var _dailyKat = null;
+  function dailyKatItems() {
+    const items = [];
+    KATER_VOCAB.forEach((v, i) => { if (v.dir) return; items.push({ id: i, de: v.de, he: spCleanHe(v.he), pos: v.pos, cat: katerSceneKey(v), ref: i, gender: v.gender }); });
+    return items;
+  }
+  function dailyKatKnown() { return new Set(getKaterVocabKnown()); }
+  function dailyKat() {
+    if (_dailyKat || !window.Daily) return _dailyKat;
+    const toSpeak = it => ({ ref: it.id, prompt: it.he, answer: it.de, display: (it.gender ? it.gender + ' ' : '') + it.de, hint: it.pos });
+    const byIds = ids => { const m = new Map(dailyKatItems().map(i => [i.id, i])); return ids.map(id => m.get(id)).filter(Boolean); };
+    const setK = (id, on) => { const s = dailyKatKnown(); if (on) s.add(id); else s.delete(id); safeSet('delearn_kater_vocab_known', JSON.stringify([...s])); };
+    _dailyKat = Daily.create({
+      key: 'delearn_kater_daywords', title: '15 מילים ביום',
+      items: dailyKatItems, getKnown: dailyKatKnown,
+      pickNew: (n, assigned) => {
+        const kn = dailyKatKnown(), pool = dailyKatItems().filter(i => !assigned.has(String(i.id)));
+        const fresh = pool.filter(i => !kn.has(i.id)), rest = pool.filter(i => kn.has(i.id));
+        return fresh.concat(rest).slice(0, n).map(i => i.id);
+      },
+      speak: t => { try { speak(String(t), null); } catch (e) {} },
+      study: (ids, redraw) => {
+        if (!window.Bowls) return;
+        Bowls.open({
+          title: 'שינון המילים של היום', items: byIds(ids), categories: [], allLabel: 'המילים של היום',
+          getKnown: dailyKatKnown, setKnown: setK,
+          speak: t => { try { speak(String(t), null); } catch (e) {} },
+          onClose: redraw
+        });
+      },
+      test: (ids, redraw) => {
+        if (!window.SpeakPractice) return;
+        SpeakPractice.open({
+          title: 'מבחן · המילים של היום', storeKey: 'delearn_kater_sp_daily', autostart: true,
+          items: byIds(ids).map(toSpeak),
+          onResult: (idx, ok) => setK(idx, !!ok),
+          getGroups: spKaterGroups, getItems: () => [],
+          onClose: redraw
+        });
+      },
+      openCalendar: () => openDaily(),
+      onClose: () => { refreshDailyBanner(); try { renderKater(); } catch (e) {} }
+    });
+    return _dailyKat;
+  }
+  function openDaily() { const d = dailyKat(); if (d) d.overlay(); }
+  function refreshDailyBanner() { const d = dailyKat(); const el = document.getElementById('dailyBanner'); if (d && el) d.refreshBanner(el); }
+  try { refreshDailyBanner(); } catch (e) {}
+  // <<DAILYADAPT-END>>
 
   switchTab('kater');
   renderKater();
