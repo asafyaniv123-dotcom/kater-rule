@@ -1852,14 +1852,14 @@
     const o = S.opts, cfg = S.cfg;
     saveCfg(o, cfg);
     let items = [];
-    try { items = o.getItems({ group: cfg.group, count: cfg.count === 'all' ? 99999 : cfg.count, preferNew: cfg.preferNew }) || []; } catch (e) { console.error(e); }
-    if (cfg.count !== 'all') items = items.slice(0, cfg.count);
+    if (o.items) items = o.items.slice(); else try { items = o.getItems({ group: cfg.group, count: cfg.count === 'all' ? 99999 : cfg.count, preferNew: cfg.preferNew }) || []; } catch (e) { console.error(e); }
+    if (cfg.count !== 'all' && !o.items) items = items.slice(0, cfg.count);
     if (!items.length) { S.msg = 'אין מילים לתרגול בבחירה הזו.'; renderSetup(); return; }
     clearTimers(); stopRec();
     Object.assign(S, {
       phase: 'play', idx: 0, state: 'ask', attempts: 0, combo: 0, best: 0, firstTry: 0, results: [], done: false, msg: '', heard: '', wrong: false,
       listening: false, live: false, typing: !!typing || !SR, focusInput: false, base: 0, lastLen: 0, muteUntil: 0, heardAny: false,
-      queue: items.map(it => ({ ref: it.ref, prompt: it.prompt, answer: it.answer, display: it.display, hint: it.hint }))
+      queue: items.map(it => ({ ref: it.ref, prompt: it.prompt, answer: it.answer, display: it.display, hint: it.hint, sub: it.sub, ltr: it.ltr }))
     });
     restarts = [];
     render();
@@ -1875,9 +1875,9 @@
     const cardCls = 'sp-card' + (S.enter ? ' enter' : '') + (S.state === 'ok' ? ' ok' : S.state === 'bad' ? ' bad' : S.wrong ? ' wrongtry' : '') + (S.shake ? ' shake' : '');
     let cardInner;
     if (S.state === 'ask') {
-      cardInner = '<div class="sp-prompt">' + esc(c.prompt) + '</div>' + (c.hint ? '<div class="sp-pos">' + esc(c.hint) + '</div>' : '');
+      cardInner = '<div class="sp-prompt"' + (c.ltr ? ' style="direction:ltr;font-size:23px"' : '') + '>' + esc(c.prompt) + '</div>' + (c.hint ? '<div class="sp-pos">' + esc(c.hint) + '</div>' : '');
     } else {
-      cardInner = '<div class="sp-answer">' + esc(c.display || c.answer) + '</div><div class="sp-sub">' + esc(c.prompt) + '</div>';
+      cardInner = '<div class="sp-answer">' + esc(c.display || c.answer) + '</div><div class="sp-sub"' + (c.ltr ? ' style="direction:ltr"' : '') + '>' + esc(c.sub || c.prompt) + '</div>';
     }
     const layers = (total - S.idx > 2 ? '<div class="sp-layer l2"></div>' : '') + (total - S.idx > 1 ? '<div class="sp-layer l1"></div>' : '');
     let banner = '';
@@ -2055,7 +2055,7 @@
     sfx('bad');
     later(() => { if (S && S.state === 'bad') speakWord(c.display || c.answer, true); }, 500); // after a miss the word is always played, so the person hears how it should sound
     // practise it once more at the end of the round
-    if (!c.requeued) S.queue.push({ ref: c.ref, prompt: c.prompt, answer: c.answer, display: c.display, hint: c.hint, requeued: true });
+    if (!c.requeued) S.queue.push({ ref: c.ref, prompt: c.prompt, answer: c.answer, display: c.display, hint: c.hint, sub: c.sub, ltr: c.ltr, requeued: true });
   }
   function advance() {
     clearTimers();
@@ -2070,6 +2070,7 @@
   }
   function renderEnd() {
     const n = S.results.length, miss = S.results.filter(r => !r.ok);
+    if (!S.finished) { S.finished = true; try { if (S.opts.onFinish) S.opts.onFinish({ total: n, firstTry: S.firstTry, results: S.results.map(r => ({ ref: r.item.ref, ok: r.ok })) }); } catch (e) {} }
     overlay.innerHTML =
       '<div class="sp-top"><button class="sp-x" id="spClose" aria-label="סגירה">✕</button><div class="sp-bar"><div class="sp-fill" style="width:100%"></div></div></div>' +
       '<div class="sp-end"><h2>' + (miss.length === 0 ? 'מושלם! 🎉' : 'סיימתם סיבוב') + '</h2>' +
@@ -2079,7 +2080,7 @@
       '<div class="sp-btns"><button class="sp-redo" id="spSettings" style="width:auto;flex:1;padding:0 14px;height:48px;font-size:15px;color:inherit">שינוי הגדרות</button><button class="sp-redo" id="spDone" style="width:auto;flex:1;padding:0 14px;height:48px;font-size:15px;color:inherit">סגירה</button></div></div>';
     document.getElementById('spClose').onclick = close;
     document.getElementById('spDone').onclick = close;
-    document.getElementById('spAgain').onclick = () => { const t = S.typing; begin(t); };
+    document.getElementById('spAgain').onclick = () => { const t = S.typing; S.finished = false; begin(t); };
     document.getElementById('spSettings').onclick = () => { S.groups = S.opts.getGroups ? S.opts.getGroups() : []; S.phase = 'setup'; S.msg = ''; render(); };
   }
 
@@ -2088,11 +2089,13 @@
     clearTimers(); stopRec();
     if (!overlay) { overlay = document.createElement('div'); overlay.className = 'sp-overlay'; document.body.appendChild(overlay); }
     S = { opts, phase: 'setup', cfg: loadCfg(opts), groups: opts.getGroups ? opts.getGroups() : [{ id: 'all', label: 'הכול', count: 999 }], msg: '', live: false, listening: false, typing: !SR, done: false };
+    if (opts.autostart) { if (opts.preset) Object.assign(S.cfg, opts.preset); audioCtx(); begin(false); return; } // started by the coach: skip the setup screen
     render();
   }
 
   window.SpeakPractice = {
     open: open,
+    ensureCss: injectCss,
     matches: matches, // exported for tests
     _state: function () { return S; },
     supported: !!SR
@@ -2101,6 +2104,517 @@
 
 </script>
 <!--SPEAKMOD-END-->
+<!--COACH-START-->
+<script>
+/* Personal coach for the Kater role: a guided daily path built on Bloom's levels, running on top of the app's own tools. */
+(function () {
+  'use strict';
+  const KEY = 'delearn_kater_coach';
+  const FLIGHT = '2026-10-28';
+  const LV = [null,
+    { n: 'זכירה', c: '#0F7B6C', icon: '🧠', what: 'מילים של הסצנה', why: 'אי אפשר לשנן משפט כשאין לך את אבני הבניין שלו. קודם מכירים את המילים.' },
+    { n: 'הבנה', c: '#C9C200', icon: '👂', what: 'קריאה והאזנה עם תרגום', why: 'קוראים ומאזינים עם התרגום, עד שכל משפט ברור: מה הדמות רוצה, ולמה היא אומרת את זה.' },
+    { n: 'יישום', c: '#E0553F', icon: '🗣️', what: 'אומרים את השורות בקול', why: 'רואים את המשמעות בעברית ואומרים את השורה בגרמנית בקול. פה זה מתחיל להיכנס לפה.' },
+    { n: 'ניתוח', c: '#F0901A', icon: '🧩', what: 'משלימים מילה חסרה במשפט', why: 'מפרקים את המשפט ומשלימים מילה חסרה: ככה מבינים איך הוא בנוי, ולא רק זוכרים צלילים.' },
+    { n: 'הערכה', c: '#0B6B5E', icon: '🎯', what: 'בוחנים את עצמך בלי רמזים', why: 'רק הרמז מהבמה, בלי טקסט. לענות בכנות לעצמך זה מה שמראה מה באמת נכנס.' },
+    { n: 'יצירה', c: '#C9C200', icon: '🎭', what: 'ביצוע מול ההקלטה', why: 'ההקלטה משתיקה את השורות שלך ואתה משחק את התפקיד מול שאר הדמויות, כמו על הבמה.' }
+  ];
+  const $ctx = () => window.KATER_COACH_CTX;
+  let overlay = null, strip = null, cur = null; // cur = step that is running right now
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = n => (n < 10 ? '0' : '') + n;
+  function dstr(d) { d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function dnum(s) { const p = s.split('-').map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000); }
+  function today() { return dstr(); }
+  function sayCoach(t) { try { if ($ctx().speakHe) $ctx().speakHe(t); } catch (e) {} }
+
+  // ---------------- state ----------------
+  function load() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!s || typeof s !== 'object') s = {};
+    s.v = 1; s.start = s.start || today(); s.budget = s.budget || 150;
+    s.diag = s.diag || { done: false, res: {} };
+    s.sc = s.sc || {}; s.days = s.days || {}; s.lastOpen = s.lastOpen || '';
+    return s;
+  }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  let ST = load();
+  function sceneState(key) { return ST.sc[key] || (ST.sc[key] = { done: {}, rv: { n: 0, due: 0 }, last: 0 }); }
+  function dayRec(date) { date = date || today(); return ST.days[date] || (ST.days[date] = { plan: [], done: {}, min: 0 }); }
+
+  // ---------------- scenes ----------------
+  let SCENES = null;
+  function scenes() {
+    if (SCENES) return SCENES;
+    const C = $ctx(), seen = new Map(), out = [];
+    C.lines.forEach((l, i) => {
+      const k = l.part + '|' + l.scene;
+      if (!seen.has(k)) { const o = { key: k, part: l.part, name: l.scene, lines: [], vocab: [], span: 0, mineSync: 0 }; seen.set(k, o); out.push(o); }
+      seen.get(k).lines.push(i);
+    });
+    C.vocab.forEach((v, i) => { const o = seen.get(v.part + '|' + v.scene); if (o) o.vocab.push(i); });
+    out.forEach(o => {
+      const arr = C.sync[o.part] || [];
+      let a = -1; arr.forEach((e, i) => { if (a < 0 && e.sc === o.name) a = i; });
+      if (a >= 0) {
+        let b = arr.length; for (let i = a + 1; i < arr.length; i++) if (arr[i].sc) { b = i; break; }
+        o.syncFrom = a; o.syncTo = b - 1;
+        o.span = (b < arr.length ? arr[b].t : arr[arr.length - 1].t + 10) - arr[a].t;
+      }
+    });
+    SCENES = out; return out;
+  }
+  function sceneByKey(k) { return scenes().find(s => s.key === k); }
+  function mastery(sc) { const kn = new Set($ctx().known()); return sc.lines.length ? sc.lines.filter(i => kn.has(i)).length / sc.lines.length : 0; }
+  function vocabRatio(sc) { if (!sc.vocab.length) return 1; const kn = new Set($ctx().vocabKnown()); return sc.vocab.filter(i => kn.has(i)).length / sc.vocab.length; }
+
+  // fill-in-the-blank items for the "analysis" level
+  function clozeItems(sc) {
+    const C = $ctx(), out = [], usedLine = new Set();
+    sc.vocab.forEach(vi => {
+      const v = C.vocab[vi]; if (!v || usedLine.has(v.lineIndex)) return;
+      const line = C.lines[v.lineIndex]; if (!line) return;
+      const text = line.de.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+      const base = String(v.de || '').replace(/\(.*?\)/g, '').trim().split(/[\s/,]+/)[0];
+      if (!base || base.length < 3) return;
+      const isVerb = /פועל/.test(v.pos || '');
+      const stem = isVerb && /en$/.test(base) && base.length > 5 ? base.slice(0, -2) : base;
+      const cands = [stem];
+      for (const w of cands) {
+        const re = new RegExp('(^|[^A-Za-zÄÖÜäöüß])(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-zäöüß]{0,3})(?![A-Za-zÄÖÜäöüß])', 'i');
+        const m = re.exec(text);
+        if (m && text.split(' ').length >= 3) {
+          const blanked = text.replace(re, (all, pre) => pre + '_____');
+          out.push({ ref: v.lineIndex, prompt: blanked, answer: m[2], display: m[2], hint: line.he, sub: text, ltr: true });
+          usedLine.add(v.lineIndex); break;
+        }
+      }
+    });
+    return out;
+  }
+
+  // ---------------- time estimates and the plan ----------------
+  function est(sc, L) {
+    switch (L) {
+      case 1: return Math.max(4, Math.ceil(sc.vocab.length * 0.6));
+      case 2: return Math.max(5, Math.ceil(sc.span / 60 * 1.1) + 3);
+      case 3: return Math.ceil(sc.lines.length * 0.5) + 3;
+      case 4: return Math.max(4, Math.ceil(clozeItems(sc).length * 0.45) + 2);
+      case 5: return Math.ceil(sc.lines.length * 0.4) + 3;
+      case 6: return Math.max(5, Math.ceil(sc.span / 60 * 1.15) + 2);
+    }
+    return 5;
+  }
+  function stepFor(sc, L) {
+    return { id: 'L' + L + ':' + sc.key, type: ['', 'vocab', 'read', 'apply', 'analyze', 'evaluate', 'create'][L], lv: L, key: sc.key, title: LV[L].n + ' · ' + sc.name, what: LV[L].what, min: est(sc, L) };
+  }
+  function levelsFor(compress) { return compress ? [1, 3, 5, 6] : [1, 2, 3, 4, 5, 6]; }
+  function isDone(sc, L) {
+    const s = sceneState(sc.key);
+    if (s.done[L]) return true;
+    if (L === 1 && (!sc.vocab.length || vocabRatio(sc) >= 0.85)) return true;
+    if (L === 4 && clozeItems(sc).length < 2) return true;
+    return false;
+  }
+  function daysLeft(date) { return dnum(FLIGHT) - dnum(date || today()); }
+  function pendingMinutes(compress) {
+    let m = 0;
+    scenes().forEach(sc => levelsFor(compress).forEach(L => { if (!isDone(sc, L)) m += est(sc, L); }));
+    return m;
+  }
+  function modeNow() {
+    const left = daysLeft();
+    const studyDays = Math.max(0, left - 2); // the last two days before the flight are for full run-throughs
+    const capacity = studyDays * ST.budget;
+    const full = pendingMinutes(false);
+    const compress = full > capacity * 0.9;
+    return { left, studyDays, capacity, full, compress, runPhase: left <= 2 };
+  }
+  function dueReviews(date) {
+    const dn = dnum(date);
+    return scenes().filter(sc => { const s = sceneState(sc.key); return s.done[5] && s.rv.due && s.rv.due <= dn && !dayRec(date).done['rv:' + date + ':' + sc.key]; })
+      .sort((a, b) => mastery(a) - mastery(b));
+  }
+  function generate(minutes) {
+    const M = modeNow(), steps = [], date = today();
+    let used = 0;
+    if (!ST.diag.done) { steps.push({ id: 'diag', type: 'diag', lv: 0, key: '', title: 'בדיקת מצב · איפה אתה עומד', what: 'שתי שורות מכל סצנה, בלי רמזים', min: 12 }); used += 12; }
+    dueReviews(date).slice(0, 3).forEach(sc => { steps.push({ id: 'rv:' + date + ':' + sc.key, type: 'review', lv: 5, key: sc.key, title: 'חזרה · ' + sc.name, what: 'שש שורות מהסצנה, בלי רמזים', min: 6 }); used += 6; });
+    if (M.runPhase) {
+      ['1', '2'].forEach(p => {
+        const arr = scenes().filter(s => s.part === p); if (!arr.length) return;
+        const span = arr.reduce((a, s) => a + s.span, 0);
+        steps.push({ id: 'run:' + p + ':' + date, type: 'run', lv: 6, key: p, title: 'הרצה מלאה · חלק ' + p, what: 'ביצוע מול ההקלטה, כל החלק ברצף', min: Math.max(20, Math.round(span / 60 * 1.1)) });
+      });
+      steps.push({ id: 'weak:' + date, type: 'weak', lv: 5, key: '', title: 'חיזוק · השורות החלשות', what: 'השורות שעוד לא ידעת', min: 15 });
+      return steps;
+    }
+    outer: for (const sc of scenes()) {
+      for (const L of levelsFor(M.compress)) {
+        if (isDone(sc, L) || dayRec().done['L' + L + ':' + sc.key]) continue;
+        const e = est(sc, L);
+        if (used + e > minutes * 1.08 && steps.length) break outer;
+        steps.push(stepFor(sc, L)); used += e;
+      }
+    }
+    return steps;
+  }
+  function ensurePlan() {
+    const d = dayRec();
+    const doneAll = d.plan.length && d.plan.every(s => d.done[s.id]);
+    if (!d.plan.length) { d.plan = generate(Math.max(30, ST.budget - d.min)); }
+    else if (doneAll && ST.budget - d.min >= 20) {
+      const more = generate(ST.budget - d.min).filter(s => !d.plan.some(p => p.id === s.id));
+      d.plan = d.plan.concat(more);
+    }
+    save(ST); return d;
+  }
+  function nextStep() { const d = ensurePlan(); return d.plan.find(s => !d.done[s.id]) || null; }
+
+  // ---------------- coach voice ----------------
+  function message(next) {
+    const M = modeNow(), n = scenes().filter(s => isDone(s, 5)).length, total = scenes().length;
+    const dayNo = dnum(today()) - dnum(ST.start) + 1;
+    if (!ST.diag.done) return 'שלום אסף. נשארו ' + M.left + ' ימים עד הטיסה. לפני שנתחיל אני צריך לדעת איפה אתה עומד: בדיקה של כ-12 דקות, שתי שורות מכל סצנה. בלי ציונים ובלי לחץ, זה רק כדי שלא תבזבז זמן על מה שכבר ידוע.';
+    if (M.runPhase) return 'הגענו לשלב האחרון: ' + (M.left === 1 ? 'מחר טסים' : 'עוד יומיים טסים') + '. לא לומדים כלום חדש. עושים הרצות מלאות מול ההקלטה ומחזקים את השורות החלשות.';
+    if (!next) return 'סיימת את כל מה שתוכנן להיום. זמן מצוין לעצור, לנוח ולישון. השינה היא חלק מהשינון.';
+    let m = 'יום ' + dayNo + ' · נשארו ' + M.left + ' ימים. ' + n + ' מתוך ' + total + ' סצנות כבר בידיים שלך.';
+    if (M.compress) m += ' הקצב מחייב מצב אינטנסיבי: לסצנות הבאות אני מדלג על הניתוח וההבנה הממושכת, ובעיקר מתרגל ובוחן.';
+    return m;
+  }
+
+  // ---------------- UI ----------------
+  const CSS = `
+  .co-ov { position: fixed; inset: 0; z-index: 8000; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
+  .co-wrap { max-width: 560px; margin: 0 auto; }
+  .co-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .co-top h2 { margin: 0; font-size: 24px; font-weight: 800; color: var(--fun-green, #58a700); }
+  .co-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
+  .co-count { display: flex; gap: 10px; margin: 12px 0 8px; }
+  .co-stat { flex: 1; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 16px; box-shadow: 0 4px 0 var(--fun-shade, #e5e5e5); padding: 10px 8px; text-align: center; }
+  .co-stat b { display: block; font-size: 26px; font-weight: 800; line-height: 1.1; }
+  .co-stat span { font-size: 12px; color: var(--ink-soft, #777); }
+  .co-msg { background: var(--accent-soft, #ddf4ff); border-radius: 18px; padding: 14px 16px; margin: 10px 0; font-size: 15.5px; line-height: 1.5; font-weight: 500; }
+  .co-next { background: var(--surface, #fff); border: 2px solid var(--fun-green, #58cc02); border-radius: 22px; box-shadow: 0 5px 0 var(--fun-green, #58cc02); padding: 16px; margin: 14px 0; }
+  .co-next .co-lvl { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13px; color: #fff; padding: 3px 12px; border-radius: 999px; }
+  .co-next h3 { margin: 8px 0 4px; font-size: 20px; font-weight: 800; }
+  .co-next p { margin: 0 0 12px; font-size: 14.5px; line-height: 1.5; color: var(--ink-soft, #777); }
+  .co-go { width: 100%; border: 0; border-radius: 16px; padding: 15px; font: inherit; font-size: 18px; font-weight: 800; color: #fff; background: var(--fun-green, #58cc02); box-shadow: 0 5px 0 var(--fun-green-dk, #58a700); cursor: pointer; }
+  .co-go:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--fun-green-dk, #58a700); }
+  .co-h { margin: 22px 0 8px; font-size: 16px; font-weight: 800; }
+  .co-step { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 16px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .co-step.done { opacity: .6; }
+  .co-step.now { border-color: var(--fun-green, #58cc02); }
+  .co-ic { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex: none; color: #fff; }
+  .co-step b { display: block; font-size: 15px; }
+  .co-step small { color: var(--ink-soft, #777); font-size: 12.5px; }
+  .co-tick { margin-inline-start: auto; font-size: 20px; color: var(--fun-green, #58cc02); font-weight: 800; }
+  .co-pyr { display: block; width: 100%; max-width: 330px; margin: 6px auto; }
+  .co-map { display: flex; flex-direction: column; gap: 6px; }
+  .co-sc { display: flex; align-items: center; gap: 10px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 14px; padding: 8px 10px; font-size: 14px; }
+  .co-sc .co-n { flex: 1; min-width: 0; font-weight: 600; }
+  .co-dots { display: flex; gap: 3px; }
+  .co-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--line, #e5e5e5); display: block; }
+  .co-pct { font-size: 12px; color: var(--ink-soft, #777); min-width: 34px; text-align: left; direction: ltr; }
+  .co-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .co-chip { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 14px; padding: 9px 14px; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 3px 0 var(--fun-shade, #e5e5e5); }
+  .co-chip.on { border-color: var(--fun-blue, #1cb0f6); color: var(--fun-blue-dk, #1899d6); background: var(--accent-soft, #ddf4ff); }
+  .co-link { background: none; border: 0; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-soft, #777); padding: 8px 4px; cursor: pointer; }
+  .co-banner { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border: 2px solid var(--fun-green, #58cc02); border-radius: 20px; box-shadow: 0 4px 0 var(--fun-green, #58cc02); padding: 11px 14px; margin: 4px 0 14px; cursor: pointer; }
+  .co-banner .co-bi { font-size: 28px; }
+  .co-banner b { display: block; font-size: 16px; }
+  .co-banner small { color: var(--ink-soft, #777); font-size: 12.5px; }
+  .co-banner .co-bgo { margin-inline-start: auto; background: var(--fun-green, #58cc02); color: #fff; font-weight: 800; border-radius: 12px; padding: 8px 14px; box-shadow: 0 3px 0 var(--fun-green-dk, #58a700); }
+  .co-strip { position: fixed; top: 0; left: 0; right: 0; z-index: 7000; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; background: var(--fun-green, #58cc02); color: #fff; font-weight: 700; font-size: 14px; box-shadow: 0 3px 8px rgba(0,0,0,.2); }
+  .co-strip span { flex: 1 1 100%; min-width: 0; line-height: 1.35; font-size: 13.5px; }
+  .co-strip button { flex: 1; }
+  .co-strip button { border: 0; border-radius: 12px; padding: 8px 12px; font: inherit; font-weight: 800; cursor: pointer; background: #fff; color: var(--fun-green-dk, #58a700); box-shadow: 0 3px 0 rgba(0,0,0,.18); }
+  .co-strip button.sec { background: rgba(255,255,255,.2); color: #fff; box-shadow: none; }
+  
+  .karaoke-on .sync-mine .sync-de, .karaoke-on .sync-mine .sync-he { filter: blur(8px); transition: filter .2s; }
+  .karaoke-on .sync-mine.rev .sync-de, .karaoke-on .sync-mine.rev .sync-he { filter: none; }
+  /* recite */
+  .co-card { background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 26px; box-shadow: 0 6px 0 var(--fun-shade, #e5e5e5); padding: 20px 16px; min-height: 230px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; margin: 14px 0; }
+  .co-card.rev { background: var(--accent-soft, #ddf4ff); border-color: var(--fun-blue, #1cb0f6); box-shadow: 0 6px 0 var(--fun-blue, #1cb0f6); }
+  .co-card .co-big { font-size: 24px; font-weight: 800; line-height: 1.35; }
+  .co-card .co-de { font-size: 22px; font-weight: 800; direction: ltr; line-height: 1.35; }
+  .co-card .co-small { font-size: 14px; color: var(--ink-soft, #777); line-height: 1.45; }
+  .co-card .co-who { font-size: 12px; font-weight: 800; color: var(--ink-soft, #777); direction: ltr; }
+  .co-rate { display: flex; gap: 8px; }
+  .co-rate button, .co-btn { flex: 1; border: 0; border-radius: 16px; padding: 14px 6px; font: inherit; font-size: 16px; font-weight: 800; color: #fff; cursor: pointer; }
+  .co-rate .g { background: var(--fun-green, #58cc02); box-shadow: 0 4px 0 var(--fun-green-dk, #58a700); }
+  .co-rate .o { background: var(--fun-orange, #ff9600); box-shadow: 0 4px 0 #d97f00; }
+  .co-rate .r { background: var(--fun-red, #ff4b4b); box-shadow: 0 4px 0 var(--fun-red-dk, #ea2b2b); }
+  .co-btn { background: var(--fun-blue, #1cb0f6); box-shadow: 0 4px 0 var(--fun-blue-dk, #1899d6); width: 100%; font-size: 18px; }
+  .co-aux { display: flex; gap: 8px; justify-content: center; }
+  .co-aux button { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 14px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 3px 0 var(--fun-shade, #e5e5e5); }
+  .co-bar { flex: 1; height: 14px; border-radius: 8px; background: var(--line, #e6e1d8); overflow: hidden; }
+  .co-bar i { display: block; height: 100%; background: linear-gradient(90deg, #22d3c5, #3b82f6); border-radius: 8px; transition: width .3s; }
+  .co-score { font-size: 56px; font-weight: 800; color: var(--fun-blue, #1cb0f6); direction: ltr; text-align: center; }
+  .co-miss { background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 16px; padding: 8px 12px; font-size: 14px; max-height: 220px; overflow: auto; }
+  .co-miss div { padding: 5px 0; border-bottom: 1px solid var(--line, #e5e5e5); direction: ltr; text-align: left; }
+  .co-miss div:last-child { border-bottom: 0; }
+  `;
+  function injectCss() {
+    if (document.getElementById('coCss')) return;
+    const s = document.createElement('style'); s.id = 'coCss'; s.textContent = CSS; document.head.appendChild(s);
+  }
+  function mount() {
+    injectCss();
+    if (!overlay) { overlay = document.createElement('div'); overlay.className = 'co-ov'; document.body.appendChild(overlay); }
+    return overlay;
+  }
+  function unmount() { if (overlay) { overlay.remove(); overlay = null; } }
+
+  function pyramid(sc) {
+    // Bloom's pyramid: bottom = remember ... top = create; filled = done, outlined = the one to do next
+    const cs = sc ? levelsFor(modeNow().compress) : [];
+    let nextL = 0; if (sc) { for (const L of cs) { if (!isDone(sc, L)) { nextL = L; break; } } }
+    const H = 30, top = 6, cx = 160, half = y => (y - top) / (H * 6) * 150;
+    let out = '<svg class="co-pyr" viewBox="0 0 320 196" role="img" aria-label="פירמידת הלמידה">';
+    for (let i = 0; i < 6; i++) {
+      const L = 6 - i, y0 = top + i * H, y1 = y0 + H - 3;
+      const pts = (i === 0 ? [[cx, y0], [cx + half(y1), y1], [cx - half(y1), y1]] : [[cx - half(y0), y0], [cx + half(y0), y0], [cx + half(y1), y1], [cx - half(y1), y1]]);
+      const done = sc ? isDone(sc, L) : false, skipped = sc && cs.indexOf(L) < 0 && !done;
+      const fill = done ? LV[L].c : 'none', opa = skipped ? .35 : 1;
+      out += '<polygon points="' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ') + '" fill="' + fill + '" fill-opacity="' + (done ? 1 : 0) + '" stroke="' + LV[L].c + '" stroke-width="' + (L === nextL ? 4 : 2) + '" opacity="' + opa + '"' + (L === nextL ? ' style="filter:drop-shadow(0 0 5px ' + LV[L].c + ')"' : '') + '/>';
+      out += '<text x="' + cx + '" y="' + (y0 + H / 2 + 5) + '" text-anchor="middle" font-size="' + (i === 0 ? 11 : 14) + '" font-weight="800" fill="' + (done ? '#fff' : 'currentColor') + '" opacity="' + (skipped ? .4 : 1) + '">' + LV[L].n + '</text>';
+    }
+    return out + '</svg>';
+  }
+
+  function home(note) {
+    const el = mount();
+    ST.lastOpen = today(); save(ST);
+    const M = modeNow(), d = ensurePlan(), next = d.plan.find(s => !d.done[s.id]) || null;
+    const total = scenes().reduce((a, s) => a + s.lines.length, 0), known = new Set($ctx().known());
+    const knownN = scenes().reduce((a, s) => a + s.lines.filter(i => known.has(i)).length, 0);
+    const doneMin = Math.round(d.min), planMin = d.plan.reduce((a, s) => a + s.min, 0);
+    const sc = next && next.key && next.type !== 'run' ? sceneByKey(next.key) : (scenes().find(s => levelsFor(M.compress).some(L => !isDone(s, L))) || null);
+    let h = '<div class="co-wrap"><div class="co-top"><h2>🧭 המאמן שלי</h2><button class="co-x" id="coClose" aria-label="סגירה">✕</button></div>';
+    h += '<div class="co-count"><div class="co-stat"><b>' + M.left + '</b><span>ימים לטיסה</span></div><div class="co-stat"><b>' + Math.round(knownN / Math.max(1, total) * 100) + '%</b><span>מהשורות שלך בידיים</span></div><div class="co-stat"><b>' + doneMin + '</b><span>דקות היום</span></div></div>';
+    h += '<div class="co-msg">' + esc(note || message(next)) + '</div>';
+    if (next) {
+      const lv = next.lv ? LV[next.lv] : { n: 'בדיקה', c: '#1cb0f6', icon: '🔎', why: 'כדי לבנות לך מסלול שמתאים בדיוק למה שאתה כבר יודע.' };
+      const why = next.type === 'review' ? 'חזרה במרווחים: מה שחוזרים אליו אחרי יום ושניים נשאר בראש. זה ההבדל בין לדעת היום ולדעת בבמה.' : next.type === 'run' ? 'הרצה רציפה של כל החלק, כמו בהצגה, עם ההקלטה. כאן רואים מה באמת מוכן.' : next.type === 'weak' ? 'השורות שעוד לא ישבו. כאן ההשקעה הכי משתלמת.' : lv.why;
+      h += '<div class="co-next"><span class="co-lvl" style="background:' + lv.c + '">' + lv.icon + ' ' + esc(lv.n) + '</span><h3>' + esc(next.title) + '</h3><p>' + esc(why) + '</p><button class="co-go" id="coGo">התחל · ' + next.min + ' דק׳</button></div>';
+    }
+    h += '<div class="co-h">התוכנית להיום <small style="font-weight:400;color:var(--ink-soft)">· ' + planMin + ' דק׳ מתוכננות מתוך ' + ST.budget + '</small></div>';
+    d.plan.forEach((s, i) => {
+      const dn = !!d.done[s.id], isNow = next && next.id === s.id, lv = s.lv ? LV[s.lv] : { c: '#1cb0f6', icon: '🔎' };
+      h += '<div class="co-step' + (dn ? ' done' : '') + (isNow ? ' now' : '') + '" data-i="' + i + '"><div class="co-ic" style="background:' + lv.c + '">' + (s.type === 'review' ? '🔁' : s.type === 'run' ? '🎬' : s.type === 'weak' ? '💪' : lv.icon) + '</div><div><b>' + esc(s.title) + '</b><small>' + esc(s.what) + ' · ' + s.min + ' דק׳</small></div>' + (dn ? '<span class="co-tick">✓</span>' : '') + '</div>';
+    });
+    if (!d.plan.length) h += '<div class="co-msg">אין צעדים להיום.</div>';
+    if (sc) { h += '<div class="co-h">הפירמידה של הסצנה: ' + esc(sc.name) + '</div>' + pyramid(sc); }
+    h += '<div class="co-h">כל הסצנות</div><div class="co-map">';
+    scenes().forEach(s => {
+      const dots = levelsFor(false).map(L => '<i style="' + (isDone(s, L) ? 'background:' + LV[L].c : '') + '"></i>').join('');
+      h += '<div class="co-sc"><span class="co-n">' + esc(s.name) + '</span><span class="co-dots">' + dots + '</span><span class="co-pct">' + Math.round(mastery(s) * 100) + '%</span></div>';
+    });
+    h += '</div><div class="co-h">כמה זמן ביום?</div><div class="co-chips" id="coBudget">' + [60, 90, 120, 150, 180].map(m => '<button class="co-chip' + (ST.budget === m ? ' on' : '') + '" data-m="' + m + '">' + (m / 60) + ' שעות</button>').join('') + '</div>';
+    h += '<div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap"><button class="co-link" id="coDiag">בדוק אותי שוב</button><button class="co-link" id="coMore">הוסף עוד צעד להיום</button><button class="co-link" id="coReset">איפוס המסלול</button></div></div>';
+    el.innerHTML = h;
+    const $ = id => el.querySelector('#' + id);
+    $('coClose').onclick = () => { unmount(); refreshBanner(); };
+    if ($('coGo')) $('coGo').onclick = () => run(next);
+    el.querySelectorAll('.co-step').forEach(n => { n.onclick = () => { const s = d.plan[+n.dataset.i]; if (s && !d.done[s.id]) run(s); }; });
+    el.querySelectorAll('#coBudget .co-chip').forEach(b => { b.onclick = () => { ST.budget = +b.dataset.m; const dd = dayRec(); dd.plan = dd.plan.filter(s => dd.done[s.id]); save(ST); home(); }; });
+    $('coDiag').onclick = () => { ST.diag.done = false; const dd = dayRec(); dd.plan = dd.plan.filter(s => dd.done[s.id]); dd.plan.push({ id: 'diag:' + Date.now(), type: 'diag', lv: 0, key: '', title: 'בדיקת מצב · איפה אתה עומד', what: 'שתי שורות מכל סצנה, בלי רמזים', min: 12 }); save(ST); home(); };
+    $('coMore').onclick = () => { const dd = dayRec(); const more = generate(45).filter(s => !dd.plan.some(p => p.id === s.id)); if (!more.length) { home('אין עוד מה להוסיף: כל השלבים של הסצנות כבר הושלמו.'); return; } dd.plan = dd.plan.concat(more); save(ST); home(); };
+    $('coReset').onclick = () => { if (confirm('לאפס את כל המסלול? (הסימונים של ידעתי/לא ידעתי נשארים)')) { ST = load(); ST = { v: 1, start: today(), budget: ST.budget, diag: { done: false, res: {} }, sc: {}, days: {}, lastOpen: today() }; save(ST); home(); } };
+    el.scrollTop = 0;
+  }
+
+  // ---------------- running a step ----------------
+  function finish(step, info) {
+    const d = dayRec();
+    const mins = Math.min(60, Math.max(1, Math.round((Date.now() - (cur && cur.t0 || Date.now())) / 60000)));
+    d.min += mins;
+    let note = '';
+    const s = step.key && step.type !== 'run' && step.type !== 'weak' ? sceneState(step.key) : null, sc = s ? sceneByKey(step.key) : null;
+    let ok = true;
+    if (step.type === 'diag') {
+      ST.diag.done = true; ST.diag.res = info.byScene || {};
+      scenes().forEach(sc2 => {
+        const r = ST.diag.res[sc2.key]; if (!r) return;
+        const ratio = r.n ? r.s / r.n : 0, st2 = sceneState(sc2.key);
+        if (ratio >= 0.8) { [1, 2, 3, 4, 5].forEach(L => st2.done[L] = Date.now()); st2.rv = { n: 0, due: dnum(today()) + 1 }; }
+        else if (ratio >= 0.5) { st2.done[1] = Date.now(); st2.done[2] = Date.now(); }
+      });
+      const strong = scenes().filter(x => sceneState(x.key).done[5]).length;
+      note = 'סיימנו את הבדיקה: ' + strong + ' מתוך ' + scenes().length + ' סצנות כבר די מוכנות. את השאר נבנה שלב אחר שלב, ואת המוכנות נחזק בחזרות קצרות.';
+      d.plan = d.plan.filter(x => d.done[x.id] || x.id === step.id); d.done[step.id] = Date.now(); d.plan = d.plan.filter(x => d.done[x.id]); d.plan = d.plan.concat(generate(Math.max(45, ST.budget - d.min)));
+      save(ST); return home(note);
+    }
+    if (step.type === 'apply') {
+      const sc2 = info.ratio; ok = sc2 >= 0.6 || (s.tries || 0) >= 1;
+      if (!ok) { s.tries = (s.tries || 0) + 1; note = 'ידעת ' + Math.round(sc2 * 100) + '%. נעשה עוד סיבוב קצר על מה שלא נכנס, זה לגמרי טבעי.'; }
+      else { s.done[3] = Date.now(); s.tries = 0; note = 'יפה! ' + Math.round(sc2 * 100) + '% ידעת. עכשיו השורות כבר זזות לפה.'; }
+    } else if (step.type === 'evaluate') {
+      if (info.ratio >= 0.7) { s.done[5] = Date.now(); s.rv = { n: 0, due: dnum(today()) + 1 }; note = 'מצוין: ' + Math.round(info.ratio * 100) + '% בלי רמזים. הסצנה "' + sc.name + '" כבר אצלך. אחזור אליה מחר לחזרה קצרה.'; }
+      else { delete s.done[3]; ok = false; note = 'בלי רמזים ידעת ' + Math.round(info.ratio * 100) + '%. אין בעיה: חוזרים לשלב היישום, ואז נבחן שוב. ככה זה נשאר בראש.'; }
+    } else if (step.type === 'review') {
+      const n = (sc ? sceneState(sc.key).rv.n : 0);
+      if (info.ratio >= 0.8) { s.rv.n = n + 1; s.rv.due = dnum(today()) + [1, 2, 4, 8, 12][Math.min(4, s.rv.n)]; note = 'חזרה טובה: ' + Math.round(info.ratio * 100) + '%. אחזור אליה בעוד ' + [1, 2, 4, 8, 12][Math.min(4, s.rv.n)] + ' ימים.'; }
+      else { s.rv.n = 0; s.rv.due = dnum(today()) + 1; note = 'ידעת ' + Math.round(info.ratio * 100) + '%. מחר נחזור לסצנה הזאת שוב.'; }
+    } else if (step.type === 'vocab') { s.done[1] = Date.now(); note = 'המילים של הסצנה עברו. עכשיו נבין אותה.'; }
+    else if (step.type === 'analyze') { s.done[4] = Date.now(); note = 'יופי. עכשיו המשפטים כבר לא רק צלילים.'; }
+    else if (step.type === 'read') { s.done[2] = Date.now(); note = 'הסצנה ברורה. השלב הבא: להגיד אותה בקול.'; }
+    else if (step.type === 'create') { s.done[6] = Date.now(); if (!s.rv.due) s.rv.due = dnum(today()) + 1; note = 'ביצוע ראשון נעשה. זו כבר הצגה.'; }
+    else if (step.type === 'run') { note = 'הרצה מלאה נעשתה. כל הרצה כזאת מקרבת אותך לבמה.'; }
+    else if (step.type === 'weak') { note = 'חיזקנו את החלשות. זה בדיוק הזמן שהכי משתלם.'; }
+    if (ok) d.done[step.id] = Date.now();
+    else {
+      // not passed: a step that brings the scene back to practice replaces the failed one in today's plan
+      const back = step.type === 'evaluate' && sc ? stepFor(sc, 3) : null;
+      if (back) { d.plan = d.plan.filter(p => p.id !== back.id); delete d.done[back.id]; const i = d.plan.findIndex(p => p.id === step.id); d.plan.splice(Math.max(0, i), 0, back); }
+    }
+    cur = null; save(ST); home(note);
+  }
+
+  function showStrip(step, text, withDone) {
+    removeStrip();
+    strip = document.createElement('div'); strip.className = 'co-strip'; document.body.classList.add('co-strip-on');
+    strip.innerHTML = '<span>' + esc(text) + '</span>' + (withDone ? '<button id="coDone">סיימתי ✓</button>' : '') + '<button class="sec" id="coBack">למאמן</button>';
+    document.body.appendChild(strip); document.body.style.paddingTop = strip.offsetHeight + 'px';
+    strip.querySelector('#coBack').onclick = () => { removeStrip(); $ctx().karaoke(false); cur = null; home(); };
+    if (withDone) strip.querySelector('#coDone').onclick = () => { removeStrip(); $ctx().karaoke(false); finish(step, {}); };
+  }
+  function removeStrip() { if (strip) { strip.remove(); strip = null; } document.body.classList.remove('co-strip-on'); document.body.style.paddingTop = ''; }
+
+  function linesItems(idxs, mode) {
+    const C = $ctx();
+    return idxs.map(i => {
+      const l = C.lines[i], arr = C.sync[l.part] || [];
+      let prev = null; const j = arr.findIndex(e => e.k === i);
+      if (j > 0) { for (let q = j - 1; q >= 0 && q >= j - 3; q--) { if (arr[q].k < 0) { prev = arr[q]; break; } } }
+      return { idx: i, part: l.part, cue: l.cue, he: l.he, de: l.de, prev: prev, mode };
+    });
+  }
+
+  function run(step) {
+    const C = $ctx();
+    unmount(); removeStrip();
+    cur = { step: step, t0: Date.now() };
+    const sc = step.key && step.type !== 'run' ? sceneByKey(step.key) : null;
+    const back = () => { cur = null; home(); };
+    const backIfNotDone = () => { if (cur) { cur = null; home(); } };
+    if (step.type === 'diag') {
+      const items = [];
+      scenes().forEach(s => { const pick = s.lines.length <= 2 ? s.lines.slice() : [s.lines[Math.floor(s.lines.length / 3)], s.lines[Math.floor(s.lines.length * 2 / 3)]]; linesItems(pick, 'diag').forEach(it => { it.scene = s.key; items.push(it); }); });
+      return recite({ title: 'בדיקת מצב', intro: 'אין ציונים. עונה בכנות כדי שהמסלול יתאים לך. כל כרטיס: הרמז מהבמה, אתה אומר את השורה שלך בקול, ואז לוחץ על "הצג".', items: items, mode: 'diag', mark: true, onFinish: sum => { const by = {}; sum.results.forEach(r => { const o = by[r.item.scene] || (by[r.item.scene] = { n: 0, s: 0 }); o.n++; o.s += r.score; }); finish(step, { byScene: by, ratio: sum.ratio }); }, onClose: backIfNotDone });
+    }
+    if (step.type === 'vocab') {
+      return C.speakOpen({ title: 'אמרו את המילה בגרמנית', preset: { group: 's:' + step.key, count: 'all', preferNew: false }, storeKey: 'delearn_kater_sp_coach', onFinish: sum => { finish(step, { sum: sum }); }, onClose: backIfNotDone });
+    }
+    if (step.type === 'analyze') {
+      const items = clozeItems(sc);
+      return C.speakOpen({ title: 'השלימו את המילה החסרה', items: items, preset: { group: 'all', count: 'all', preferNew: false }, storeKey: 'delearn_kater_sp_cloze', noProgress: true, onFinish: sum => { finish(step, { sum: sum }); }, onClose: backIfNotDone });
+    }
+    if (step.type === 'apply') {
+      return recite({ title: 'יישום · ' + sc.name, intro: 'רואים את המשמעות בעברית. אמרו את השורה בגרמנית בקול, ואז "הצג" כדי לבדוק.', items: linesItems(sc.lines, 'apply'), mode: 'apply', mark: 'up', onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+    }
+    if (step.type === 'evaluate') {
+      const arr = linesItems(sc.lines, 'eval'); for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
+      return recite({ title: 'הערכה · ' + sc.name, intro: 'בלי עזרה: רק הרמז מהבמה. אמרו את השורה שלכם בקול, ואז "הצג".', items: arr, mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+    }
+    if (step.type === 'review') {
+      const kn = new Set(C.known());
+      let idxs = sc.lines.slice().sort((a, b) => (kn.has(a) ? 1 : 0) - (kn.has(b) ? 1 : 0) || Math.random() - .5).slice(0, 6);
+      return recite({ title: 'חזרה · ' + sc.name, intro: 'חזרה קצרה: רק הרמז מהבמה, אתם אומרים בקול.', items: linesItems(idxs, 'eval'), mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+    }
+    if (step.type === 'weak') {
+      const kn = new Set(C.known()); const weak = []; C.lines.forEach((l, i) => { if (!kn.has(i)) weak.push(i); });
+      for (let i = weak.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = weak[i]; weak[i] = weak[j]; weak[j] = t; }
+      if (!weak.length) { finish(step, { ratio: 1 }); return; }
+      return recite({ title: 'חיזוק · השורות החלשות', intro: 'השורות שעוד לא סומנו כידועות. רק הרמז מהבמה.', items: linesItems(weak.slice(0, 30), 'eval'), mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+    }
+    if (step.type === 'read') {
+      C.openScene(sc.part, sc.name, false);
+      showStrip(step, 'הבנה · ' + sc.name + ': קראו עם התרגום והאזינו עד שכל משפט ברור. 📍 משמיע מהמשפט שלפני שלך.', true);
+      return;
+    }
+    if (step.type === 'create') {
+      C.openScene(sc.part, sc.name, true);
+      showStrip(step, 'יצירה · ' + sc.name + ': ההקלטה משתיקה את השורות שלכם, ואתם אומרים אותן בקול. הקישו על שורה מטושטשת כדי להציץ.', true);
+      return;
+    }
+    if (step.type === 'run') {
+      C.openScene(step.key, null, true);
+      showStrip(step, 'הרצה מלאה · חלק ' + step.key + ': משחקים את כל התפקיד לאורך ההקלטה. היא משתיקה את השורות שלכם.', true);
+      return;
+    }
+  }
+
+  // ---------------- recite engine (self-rated) ----------------
+  function recite(o) {
+    SPCSS();
+    const C = $ctx();
+    const q = o.items.slice(); let i = 0, results = [], again = [], phase = 'ask', started = false;
+    const root = document.createElement('div'); root.className = 'co-ov'; document.body.appendChild(root);
+    const finishNow = () => { root.remove(); if (o.onFinish) o.onFinish(summary()); };
+    function summary() { const n = results.length || 1, s = results.reduce((a, r) => a + r.score, 0); return { results: results, ratio: s / n }; }
+    function close() { root.remove(); if (o.onClose) o.onClose(); }
+    function draw() {
+      if (i >= q.length) {
+        if (!results.length) return finishNow();
+        const sum = summary(), miss = results.filter(r => r.score < 1);
+        root.innerHTML = '<div class="co-wrap"><div class="co-top"><h2>' + esc(o.title) + '</h2><button class="co-x" id="rX">✕</button></div><div class="co-score">' + Math.round(sum.ratio * 100) + '%</div><div class="co-msg" style="text-align:center">' + (sum.ratio >= .8 ? 'מצוין!' : sum.ratio >= .5 ? 'בכיוון, יש מה לחזק.' : 'זה מה שבדיקה באה לגלות. משם בונים.') + '</div>' + (miss.length ? '<div class="co-h">מה עוד לא ישב</div><div class="co-miss">' + miss.slice(0, 40).map(r => '<div>' + esc(r.item.de) + '</div>').join('') + '</div>' : '') + '<div style="margin-top:14px"><button class="co-go" id="rDone">המשך</button></div></div>';
+        root.querySelector('#rX').onclick = close; root.querySelector('#rDone').onclick = finishNow;
+        return;
+      }
+      const it = q[i], pct = Math.round(i / q.length * 100);
+      let card;
+      const who = it.prev ? '<div class="co-who">' + esc(it.prev.s) + '</div><div class="co-de">' + esc(it.prev.d) + '</div>' : '';
+      if (phase === 'ask') {
+        if (it.mode === 'apply') card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div><div class="co-big">' + esc(it.he) + '</div><div class="co-small">אמרו את זה בגרמנית, בקול</div></div>';
+        else card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div>' + who + '<div class="co-small">מה אתם אומרים עכשיו? אמרו בקול</div></div>';
+      } else {
+        card = '<div class="co-card rev"><div class="co-de">' + esc(it.de) + '</div><div class="co-small">' + esc(it.he) + '</div><div class="co-aux"><button id="rSay">🔊 השמע</button>' + (C.playLine ? '<button id="rRec">🎧 מההקלטה</button>' : '') + '</div></div>';
+      }
+      const act = phase === 'ask' ? '<button class="co-btn" id="rShow">הצג</button>' : '<div class="co-rate"><button class="r" data-s="0">לא ידעתי</button><button class="o" data-s="0.5">כמעט</button><button class="g" data-s="1">ידעתי</button></div>';
+      root.innerHTML = '<div class="co-wrap"><div class="co-top"><button class="co-x" id="rX">✕</button><div class="co-bar"><i style="width:' + pct + '%"></i></div><span style="font-size:13px;color:var(--ink-soft);direction:ltr">' + i + '/' + q.length + '</span></div><div class="co-h" style="margin-top:12px">' + esc(o.title) + '</div>' + (i === 0 && phase === 'ask' && o.intro ? '<div class="co-msg" style="font-size:14px">' + esc(o.intro) + '</div>' : '') + card + act + '</div>';
+      root.querySelector('#rX').onclick = close;
+      if (phase === 'ask') root.querySelector('#rShow').onclick = () => { phase = 'rev'; draw(); if (C.speakDe) C.speakDe(q[i].de); };
+      else {
+        const sb = root.querySelector('#rSay'); if (sb) sb.onclick = () => C.speakDe(it.de);
+        const rb = root.querySelector('#rRec'); if (rb) rb.onclick = () => C.playLine(it.idx);
+        root.querySelectorAll('.co-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
+      }
+      root.scrollTop = 0;
+    }
+    function rate(score) {
+      const it = q[i];
+      if (!it.again) results.push({ item: it, score: score });
+      if (o.mark) { try { if (score === 1) C.setKnown(it.idx, true); else if (o.mark === true) C.setKnown(it.idx, false); } catch (e) {} }
+      if (score < 1 && o.mode === 'apply' && !it.again) q.push(Object.assign({}, it, { again: true }));
+      i++; phase = 'ask'; draw();
+    }
+    draw();
+  }
+  function SPCSS() { try { if (window.SpeakPractice) window.SpeakPractice.ensureCss(); } catch (e) {} injectCss(); }
+
+  // ---------------- entry banner ----------------
+  function refreshBanner() {
+    let b = document.getElementById('coachBanner');
+    if (!b) return;
+    injectCss();
+    let nx = null; try { nx = nextStep(); } catch (e) {}
+    const M = modeNow();
+    b.innerHTML = '<div class="co-banner"><span class="co-bi">🧭</span><div><b>המאמן שלי</b><small>' + M.left + ' ימים לטיסה · ' + (nx ? 'הצעד הבא: ' + esc(nx.title) : 'סיימת להיום') + '</small></div><span class="co-bgo">פתח</span></div>';
+    b.firstChild.onclick = () => home();
+  }
+  function init() {
+    if (!window.KATER_COACH_CTX) return;
+    injectCss(); refreshBanner();
+    if (ST.lastOpen !== today()) setTimeout(() => { if (!overlay) home(); }, 700); // first time today: open the coach by itself
+  }
+  window.KaterCoach = { open: () => home(), init: init, refreshBanner: refreshBanner, _state: () => ST, _reload: () => { ST = load(); SCENES = null; }, _gen: generate, _mode: modeNow, _scenes: scenes, _cloze: clozeItems };
+})();
+
+</script>
+<!--COACH-END-->
 <!--FUN-START-->
 <script>
 (function () {
@@ -2327,6 +2841,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     <div class="global-search-results" id="globalSearchResults"></div>
   </div>
 
+  <div id="coachBanner"></div>
   <div class="view active" id="view-kater"></div>
 </div>
 <div class="kater-audio-bar" id="katerAudioBar" style="display:none;">
@@ -3213,6 +3728,8 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
   let katerSyncActiveIdx = -1;
 
+  let katerKaraoke = false;
+
   function katerIsSyncView() { return katerViewMode === 'sync' || katerViewMode === 'scenes'; }
 
   let katerScenesSel = {};
@@ -3939,6 +4456,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const arr = KATER_SYNC[katerAudioPart];
     if (!el || !arr || el.dataset.part !== katerAudioPart) return;
     const i = katerSyncIndexAt(arr, el.currentTime);
+    if (katerKaraoke) { const e = arr[i]; el.muted = !!(e && e.k >= 0); } // performance mode: the recording is silent on the learner's own lines
     if (!force && i === katerSyncActiveIdx) return;
     if (katerViewMode === 'scenes' && i >= 0) {
       // the recording moved on into another scene (or the user dragged the seek bar): switch to that scene
@@ -3978,6 +4496,17 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const cur = document.getElementById('sync-line-' + katerSyncActiveIdx);
     if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+
+  function setKaterKaraoke(on) {
+    katerKaraoke = !!on;
+    const el = katerAudioEl();
+    if (el && !katerKaraoke) el.muted = false;
+    if (katerIsSyncView()) { renderKater(); if (katerKaraoke) updateKaterSyncHighlight(true); }
+  }
+
+  function toggleKaterKaraoke() { setKaterKaraoke(!katerKaraoke); }
+
+  function katerKaraokePeek(node) { node.classList.toggle('rev'); }
 
   function toggleKaterSyncHe() {
     katerSyncShowHe = !katerSyncShowHe;
@@ -4094,6 +4623,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       <div class="kater-scene-summary scenes-summary">בסצנה הזאת יש לך <b>${katerCountLabel(mineN)}</b> · לחצו על 📍 כדי לשמוע אותו מהמשפט שלפניו, ועל שורה כדי לנגן ממנה</div>
       <div class="weak-toggle-row">
         <button class="nav-btn${katerSyncShowHe ? ' active-toggle' : ''}" onclick="toggleKaterSyncHe()">תרגום</button>
+        <button class="nav-btn${katerKaraoke ? ' active-toggle' : ''}" onclick="toggleKaterKaraoke()">🎭 מצב ביצוע</button>
       </div>`;
     let lines = '';
     for (let i = r.from; i <= r.to; i++) {
@@ -4103,14 +4633,14 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       const he = (katerSyncShowHe && heText) ? `<div class="sync-he${mine ? '' : ' sync-he-other'}">${escapeHtml(heText)}</div>` : '';
       const pin = mine ? `<button class="sync-pin" onclick="katerPinPlay(${i}, event)" aria-label="נגן מהמשפט שלפני המשפט של החתול">📍</button>` : '';
       lines += `
-        <div class="sync-line${mine ? ' sync-mine sync-pinned' : ''}" id="sync-line-${i}" onclick="seekKaterSyncLine(${i})">
+        <div class="sync-line${mine ? ' sync-mine sync-pinned' : ''}" id="sync-line-${i}" onclick="${katerKaraoke && mine ? 'katerKaraokePeek(this)' : 'seekKaterSyncLine(' + i + ')'}">
           ${pin}
           <div class="sync-sp">${mine ? '🐱 ' : ''}${escapeHtml(l.s)}${l.p ? ' · עמ’ ' + l.p : ''}</div>
           <div class="sync-de">${escapeHtml(l.d)}</div>
           ${he}
         </div>`;
     }
-    return head + `<div class="sync-list">${lines}</div>`;
+    return head + `<div class="sync-list${katerKaraoke ? ' karaoke-on' : ''}">${lines}</div>`;
   }
 
   function renderKaterSyncBody() {
@@ -4130,6 +4660,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       <div class="weak-toggle-row">
         <button class="nav-btn${katerSyncShowHe ? ' active-toggle' : ''}" onclick="toggleKaterSyncHe()">תרגום</button>
         <button class="nav-btn${katerSyncOnlyMine ? ' active-toggle' : ''}" onclick="toggleKaterSyncMine()">רק התפקיד שלי</button>
+        <button class="nav-btn${katerKaraoke ? ' active-toggle' : ''}" onclick="toggleKaterKaraoke()">🎭 מצב ביצוע</button>
       </div>
       <div class="sync-hint">לחצו ▶ בנגן למטה, או הקישו על שורה כדי לקפוץ אליה. הסנכרון אוטומטי ויכול לסטות במקומות שבהם הטקסט לא תואם להקלטה. התרגום של השורות של שאר השחקנים אוטומטי. (גרסה ${KATER_AUDIO_BUILD})</div>`;
     const lines = arr.map((l, i) => {
@@ -4145,13 +4676,13 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       const heText = mine ? (KATER_LINES[l.k] ? KATER_LINES[l.k].he : '') : (l.e || '');
       const he = (katerSyncShowHe && heText) ? `<div class="sync-he${mine ? '' : ' sync-he-other'}">${escapeHtml(heText)}</div>` : '';
       return scene + `
-        <div class="sync-line${mine ? ' sync-mine' : ''}" id="sync-line-${i}" onclick="seekKaterSyncLine(${i})">
+        <div class="sync-line${mine ? ' sync-mine' : ''}" id="sync-line-${i}" onclick="${katerKaraoke && mine ? 'katerKaraokePeek(this)' : 'seekKaterSyncLine(' + i + ')'}">
           <div class="sync-sp">${mine ? '🐱 ' : ''}${escapeHtml(l.s)}${l.p ? ' · עמ’ ' + l.p : ''}</div>
           <div class="sync-de">${escapeHtml(l.d)}</div>
           ${he}
         </div>`;
     }).join('');
-    return head + `<div class="sync-list">${lines}</div>`;
+    return head + `<div class="sync-list${katerKaraoke ? ' karaoke-on' : ''}">${lines}</div>`;
   }
 
   (function migrateKaterIndices() {
@@ -4249,6 +4780,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function setKaterViewMode(mode) {
+    if (mode !== 'sync' && mode !== 'scenes' && katerKaraoke) { katerKaraoke = false; const ael = katerAudioEl(); if (ael) ael.muted = false; }
     katerViewMode = mode;
     safeSet('delearn_kater_mode', mode);
     if ((mode === 'practice' || mode === 'cards') && !katerQueue.length) buildKaterQueue();
@@ -4934,6 +5466,41 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     });
   }
   // <<SPEAKADAPT-END>>
+
+  // <<COACHADAPT-START>>
+  window.KATER_COACH_CTX = {
+    lines: KATER_LINES, vocab: KATER_VOCAB, sync: KATER_SYNC,
+    known: getKaterKnown, setKnown: setKaterKnown, vocabKnown: getKaterVocabKnown,
+    speakDe: function (t) { try { speak(String(t).replace(/\([^)]*\)/g, ' ')); } catch (e) {} },
+    playLine: function (i) { try { playKaterLineAudio(i); } catch (e) {} },
+    karaoke: function (on) { try { setKaterKaraoke(on); } catch (e) {} },
+    openScene: function (part, name, karaoke) {
+      try {
+        switchTab('kater');
+        if (katerAudioPart !== part) { katerAudioPart = part; safeSet('delearn_kater_audio_part', part); loadKaterAudioSrc(part); }
+        const arr = KATER_SYNC[part] || [];
+        let hdr = name ? arr.findIndex(e => e.sc === name) : -1;
+        katerKaraoke = !!karaoke;
+        const ael = katerAudioEl(); if (ael && !katerKaraoke) ael.muted = false;
+        if (hdr >= 0) { katerScenesSet(part, hdr); setKaterViewMode('scenes'); katerSyncFollow = true; window.scrollTo({ top: 0 }); }
+        else { setKaterViewMode('sync'); }
+        const go = (n) => { const e = katerAudioEl(); const t = hdr >= 0 ? arr[hdr].t : 0; if (e && e.dataset.part === part && e.readyState >= 1) { seekAndPlayKater(part, t); } else if (n < 40) setTimeout(() => go(n + 1), 250); };
+        go(0);
+      } catch (e) { console.error(e); }
+    },
+    speakOpen: function (o) {
+      if (!window.SpeakPractice) return;
+      SpeakPractice.open(Object.assign({
+        title: 'אמרו את המילה בגרמנית', storeKey: 'delearn_kater_sp_coach',
+        onResult: (idx, ok) => { const set = new Set(getKaterVocabKnown()); if (ok) set.add(idx); else set.delete(idx); safeSet('delearn_kater_vocab_known', JSON.stringify([...set])); },
+        getGroups: spKaterGroups,
+        getItems: ({ group }) => KATER_VOCAB.filter(v => katerSceneKey(v) === group.slice(2)).map(v => ({ ref: KATER_VOCAB.indexOf(v), prompt: spCleanHe(v.he), answer: v.de, display: (v.gender ? v.gender + ' ' : '') + v.de, hint: v.pos }))
+      }, o, { autostart: true }));
+    }
+  };
+  window.openKaterCoach = function () { if (window.KaterCoach) KaterCoach.open(); };
+  try { if (window.KaterCoach) KaterCoach.init(); } catch (e) { console.error(e); }
+  // <<COACHADAPT-END>>
 
   switchTab('kater');
   renderKater();
