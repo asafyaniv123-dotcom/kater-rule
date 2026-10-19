@@ -2104,6 +2104,158 @@
 
 </script>
 <!--SPEAKMOD-END-->
+<!--BOWLS-START-->
+<script>
+/* Two bowls: words I know and words I'm still learning. A word moves to the green bowl only when I know it; otherwise it comes back. */
+(function () {
+  'use strict';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const CSS = `
+  .bw-ov { position: fixed; inset: 0; z-index: 8600; display: flex; flex-direction: column; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom)); box-sizing: border-box; overflow: hidden; direction: rtl; font-family: inherit; }
+  .bw-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bw-top h2 { margin: 0; font-size: 21px; font-weight: 800; }
+  .bw-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
+  .bw-tools { display: flex; gap: 8px; margin: 8px 0 4px; align-items: center; }
+  .bw-tools select, .bw-tools button { font: inherit; font-size: 14px; border: 2px solid var(--line, #e5e5e5); border-radius: 12px; background: var(--surface, #fff); color: inherit; padding: 7px 10px; }
+  .bw-tools select { flex: 1; min-width: 0; }
+  .bw-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
+  .bw-stack { position: relative; width: 100%; max-width: 360px; }
+  .bw-layer { position: absolute; left: 6%; right: 6%; height: 100%; border-radius: 24px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); }
+  .bw-layer.l1 { top: 7px; opacity: .8; } .bw-layer.l2 { top: 14px; opacity: .55; left: 12%; right: 12%; }
+  .bw-card { position: relative; min-height: 210px; border-radius: 24px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); box-shadow: 0 5px 0 var(--line, #e5e5e5); padding: 18px 14px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; text-align: center; transition: transform .5s cubic-bezier(.5,0,.8,.4), opacity .5s; will-change: transform; }
+  .bw-card.rev { background: var(--accent-soft, #ddf4ff); border-color: var(--fun-blue, #1cb0f6); box-shadow: 0 5px 0 var(--fun-blue, #1cb0f6); }
+  .bw-card .bw-big { font-size: 28px; font-weight: 800; line-height: 1.3; }
+  .bw-card .bw-de { direction: ltr; }
+  .bw-card .bw-small { font-size: 14px; color: var(--ink-soft, #777); }
+  .bw-card .bw-say { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); border-radius: 14px; padding: 6px 14px; font-size: 18px; cursor: pointer; }
+  .bw-actions { width: 100%; max-width: 360px; margin-top: 16px; }
+  .bw-show { width: 100%; border: 0; border-radius: 16px; padding: 14px; font: inherit; font-size: 18px; font-weight: 800; color: #fff; cursor: pointer; background: var(--fun-blue, #1cb0f6); box-shadow: 0 4px 0 var(--fun-blue-dk, #1899d6); }
+  .bw-rate { display: flex; gap: 8px; }
+  .bw-rate button { flex: 1; border: 0; border-radius: 16px; padding: 13px 4px; font: inherit; font-size: 15.5px; font-weight: 800; color: #fff; cursor: pointer; }
+  .bw-rate .g { background: var(--fun-green, #58cc02); box-shadow: 0 4px 0 var(--fun-green-dk, #58a700); }
+  .bw-rate .o { background: var(--fun-orange, #ff9600); box-shadow: 0 4px 0 #d97f00; }
+  .bw-rate .r { background: var(--fun-red, #ff4b4b); box-shadow: 0 4px 0 #ea2b2b; }
+  .bw-bowls { display: flex; gap: 14px; align-items: flex-end; justify-content: center; padding: 10px 0 2px; }
+  .bw-bowl { flex: 1; max-width: 170px; text-align: center; cursor: pointer; background: none; border: 0; font: inherit; color: inherit; padding: 0; }
+  .bw-pile { height: 38px; display: flex; flex-wrap: wrap-reverse; justify-content: center; align-content: flex-start; gap: 2px; padding: 0 14px; overflow: hidden; }
+  .bw-pile i { width: 14px; height: 9px; border-radius: 3px; display: block; transform: rotate(var(--r, 0deg)); }
+  .bw-shell { position: relative; height: 62px; border-radius: 6px 6px 72px 72px / 6px 6px 62px 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; box-shadow: inset 0 -8px 0 rgba(0,0,0,.14), 0 4px 0 rgba(0,0,0,.18); }
+  .bw-shell b { font-size: 24px; line-height: 1; } .bw-shell span { font-size: 12.5px; font-weight: 700; opacity: .95; }
+  .bw-bowl.learn .bw-shell { background: var(--fun-orange, #ff9600); } .bw-bowl.learn .bw-pile i { background: #ffb84d; }
+  .bw-bowl.known .bw-shell { background: var(--fun-green, #58cc02); } .bw-bowl.known .bw-pile i { background: #89e219; }
+  .bw-bowl.pop .bw-shell { animation: bwPop .45s; } .bw-bowl.wig .bw-shell { animation: bwWig .45s; }
+  @keyframes bwPop { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  @keyframes bwWig { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+  .bw-done { text-align: center; }
+  .bw-done .bw-big { font-size: 26px; font-weight: 800; margin: 6px 0; }
+  .bw-sheet { position: absolute; inset: 0; z-index: 2; background: var(--bg, #fff); display: flex; flex-direction: column; padding: max(14px, env(safe-area-inset-top)) 16px 14px; box-sizing: border-box; }
+  .bw-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-top: 8px; }
+  .bw-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line, #e5e5e5); padding: 9px 2px; }
+  .bw-row .t { flex: 1; min-width: 0; } .bw-row .d { direction: ltr; text-align: left; font-weight: 800; } .bw-row .h { font-size: 13px; color: var(--ink-soft, #777); }
+  .bw-row button { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; padding: 6px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .bw-btn { border: 0; border-radius: 16px; padding: 13px 18px; font: inherit; font-size: 16px; font-weight: 800; color: #fff; cursor: pointer; background: var(--fun-green, #58cc02); box-shadow: 0 4px 0 var(--fun-green-dk, #58a700); }
+  `;
+  function injectCss() { if (document.getElementById('bwCss')) return; const s = document.createElement('style'); s.id = 'bwCss'; s.textContent = CSS; document.head.appendChild(s); }
+  function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+
+  function open(cfg) {
+    injectCss();
+    const ov = document.createElement('div'); ov.className = 'bw-ov'; document.body.appendChild(ov);
+    let cat = (cfg.categories && cfg.categories.length) ? 'all' : 'all', dir = 'he2de', queue = [], idx = 0, rev = false, busy = false, sheet = null, reviewKnown = false;
+    const byId = new Map(cfg.items.map(it => [String(it.id), it]));
+    const inCat = it => cat === 'all' || it.cat === cat;
+    const known = () => cfg.getKnown();
+    const learnList = () => cfg.items.filter(it => inCat(it) && !known().has(it.id));
+    const knownList = () => cfg.items.filter(it => inCat(it) && known().has(it.id));
+    function rebuild() { queue = shuffle(learnList().map(it => it.id)); idx = 0; rev = false; }
+    rebuild();
+    function bowl(kind, n, total) {
+      const dots = Math.min(n, 36);
+      const chips = Array.from({ length: dots }, (_, i) => '<i style="--r:' + (((i * 37) % 21) - 10) + 'deg"></i>').join('');
+      return '<button class="bw-bowl ' + kind + '" id="bw-' + kind + '"><div class="bw-pile">' + chips + '</div><div class="bw-shell"><b>' + n + '</b><span>' + (kind === 'known' ? 'ידועות' : 'ללמוד') + '</span></div></button>';
+    }
+    function draw() {
+      const L = learnList().length, K = knownList().length;
+      const cur = queue.length ? byId.get(String(queue[idx % queue.length])) : null;
+      let h = '<div class="bw-top"><button class="bw-x" id="bwX" aria-label="סגירה">✕</button><h2>🥣 ' + esc(cfg.title || 'קערות') + '</h2><span style="width:34px"></span></div>';
+      h += '<div class="bw-tools">' + (cfg.categories && cfg.categories.length ? '<select id="bwCat"><option value="all">' + esc(cfg.allLabel || 'הכול') + '</option>' + cfg.categories.map(c => '<option value="' + esc(c.id) + '"' + (c.id === cat ? ' selected' : '') + '>' + esc(c.label) + '</option>').join('') + '</select>' : '<span style="flex:1"></span>') + '<button id="bwDir">' + (dir === 'he2de' ? 'עברית ← גרמנית' : 'גרמנית ← עברית') + '</button></div>';
+      h += '<div class="bw-stage">';
+      if (!cur) {
+        h += '<div class="bw-done"><div style="font-size:54px">🎉</div><div class="bw-big">' + (cfg.items.some(inCat) ? 'כל המילים בקערה הירוקה!' : 'אין מילים כאן') + '</div><div class="bw-small" style="color:var(--ink-soft)">' + K + ' מילים ידועות. כדאי לחזור אליהן מדי פעם.</div><div style="margin-top:16px"><button class="bw-btn" id="bwReview">חזרה על ידועות</button></div></div>';
+      } else {
+        const front = dir === 'he2de' ? '<div class="bw-big">' + esc(cur.he) + '</div>' + (cur.pos ? '<div class="bw-small">' + esc(cur.pos) + '</div>' : '') : '<div class="bw-big bw-de">' + esc(cur.de) + '</div>';
+        const back = dir === 'he2de' ? '<div class="bw-big bw-de">' + esc(cur.de) + '</div><button class="bw-say" id="bwSay" aria-label="השמע">🔊</button><div class="bw-small">' + esc(cur.he) + '</div>' : '<div class="bw-big">' + esc(cur.he) + '</div><button class="bw-say" id="bwSay" aria-label="השמע">🔊</button><div class="bw-small bw-de">' + esc(cur.de) + '</div>';
+        h += '<div class="bw-stack"><div class="bw-layer l2"></div><div class="bw-layer l1"></div><div class="bw-card' + (rev ? ' rev' : '') + '" id="bwCard">' + (rev ? back : front + '<div class="bw-small" style="margin-top:6px">' + (dir === 'he2de' ? 'אמרו את המילה בגרמנית' : 'מה המשמעות?') + '</div>') + '</div></div>';
+        h += '<div class="bw-actions">' + (rev ? '<div class="bw-rate"><button class="r" data-s="0">לא ידעתי</button><button class="o" data-s="1">כמעט</button><button class="g" data-s="2">ידעתי</button></div>' : '<button class="bw-show" id="bwShow">הצג</button>') + '</div>';
+      }
+      h += '</div><div class="bw-bowls">' + bowl('learn', L) + bowl('known', K) + '</div>';
+      ov.innerHTML = h;
+      bind();
+    }
+    function bind() {
+      const $ = id => ov.querySelector('#' + id);
+      $('bwX').onclick = () => { ov.remove(); if (cfg.onClose) cfg.onClose(); };
+      if ($('bwCat')) $('bwCat').onchange = e => { cat = e.target.value; rebuild(); draw(); };
+      $('bwDir').onclick = () => { dir = dir === 'he2de' ? 'de2he' : 'he2de'; rev = false; draw(); };
+      if ($('bwShow')) $('bwShow').onclick = () => { rev = true; draw(); const c = queue.length && byId.get(String(queue[idx % queue.length])); if (c && cfg.speak) cfg.speak(c.de); };
+      if ($('bwSay')) $('bwSay').onclick = () => { const c = byId.get(String(queue[idx % queue.length])); if (c && cfg.speak) cfg.speak(c.de); };
+      if ($('bwReview')) $('bwReview').onclick = () => { queue = shuffle(knownList().map(it => it.id)).slice(0, 12); idx = 0; rev = false; reviewKnown = true; draw(); };
+      ov.querySelectorAll('.bw-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
+      $('bw-learn').onclick = () => openSheet('learn'); $('bw-known').onclick = () => openSheet('known');
+    }
+    function fly(kind, cb) {
+      const card = ov.querySelector('#bwCard'), target = ov.querySelector('#bw-' + kind + ' .bw-shell');
+      if (!card || !target) return cb();
+      const a = card.getBoundingClientRect(), t = target.getBoundingClientRect();
+      const dx = (t.left + t.width / 2) - (a.left + a.width / 2), dy = (t.top + t.height / 2) - (a.top + a.height / 2);
+      card.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(.12) rotate(' + (kind === 'known' ? 12 : -12) + 'deg)'; card.style.opacity = '.2';
+      const bw = ov.querySelector('#bw-' + kind); setTimeout(() => { if (bw) bw.classList.add(kind === 'known' ? 'pop' : 'wig'); }, 380);
+      setTimeout(cb, 520);
+    }
+    function rate(s) {
+      if (busy) return; busy = true;
+      const id = queue[idx % queue.length], it = byId.get(String(id));
+      if (cfg.onAttempt) { try { cfg.onAttempt(it, s === 2); } catch (e) {} }
+      const ok = s === 2;
+      fly(ok ? 'known' : 'learn', () => {
+        busy = false;
+        if (reviewKnown) {
+          // reviewing known words: a miss sends the word back to the learning bowl
+          if (!ok) cfg.setKnown(it.id, false);
+          queue.splice(idx, 1);
+          if (!queue.length) { reviewKnown = false; rebuild(); }
+          else idx = idx % queue.length;
+        } else if (ok) {
+          cfg.setKnown(it.id, true);
+          queue.splice(idx, 1); if (queue.length) idx = idx % queue.length;
+        } else {
+          // not known yet: the card goes back into the pile, a few cards later
+          queue.splice(idx, 1); const pos = Math.min(queue.length, s === 1 ? 6 : 3);
+          queue.splice(pos, 0, id); idx = 0;
+        }
+        if (!reviewKnown && !queue.length) rebuild();
+        rev = false; draw();
+      });
+    }
+    function openSheet(kind) {
+      const list = kind === 'known' ? knownList() : learnList();
+      const sh = document.createElement('div'); sh.className = 'bw-sheet'; ov.appendChild(sh);
+      const render = () => {
+        const cur = kind === 'known' ? knownList() : learnList();
+        sh.innerHTML = '<div class="bw-top"><button class="bw-x" id="bsX">✕</button><h2>' + (kind === 'known' ? '🟢 הקערה הירוקה' : '🟠 מילים ללמוד') + ' · ' + cur.length + '</h2><span style="width:34px"></span></div><div class="bw-list">' +
+          (cur.length ? cur.map(it => '<div class="bw-row"><div class="t"><div class="d">' + esc(it.de) + '</div><div class="h">' + esc(it.he) + '</div></div><button data-id="' + esc(it.id) + '">' + (kind === 'known' ? '← ללמוד' : 'ידוע ✓') + '</button></div>').join('') : '<div class="bw-small" style="text-align:center;margin-top:30px;color:var(--ink-soft)">הקערה ריקה</div>') + '</div>';
+        sh.querySelector('#bsX').onclick = () => { sh.remove(); const k = new Set(learnList().map(it => it.id)); queue = queue.filter(q => k.has(q)); learnList().forEach(it => { if (queue.indexOf(it.id) < 0) queue.push(it.id); }); idx = 0; rev = false; reviewKnown = false; draw(); };
+        sh.querySelectorAll('button[data-id]').forEach(b => { b.onclick = () => { const it = byId.get(b.dataset.id); cfg.setKnown(it.id, kind !== 'known'); render(); }; });
+      };
+      render();
+    }
+    draw();
+  }
+  window.Bowls = { open: open };
+})();
+
+</script>
+<!--BOWLS-END-->
 <!--COACH-START-->
 <script>
 /* Personal coach for the Kater role: a guided daily path built on Bloom's levels, running on top of the app's own tools. */
@@ -4983,6 +5135,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         <button class="nav-btn${katerVocabShuffle ? ' active-toggle' : ''}" onclick="toggleKaterVocabShuffle()">🔀 ערבוב</button>
         ${katerVocabShuffle ? '<button class="nav-btn" onclick="reshuffleKaterVocab()">ערבבו שוב</button>' : ''}
         <button class="nav-btn" onclick="openKaterSpeak()">🎤 בחינה בדיבור</button>
+        <button class="nav-btn" onclick="openBowls()">🥣 קערות</button>
       </div>`;
     if (!list.length) {
       return dirRow + `<div class="vocab-missed-empty">אין מילים בסצנה הזאת.</div>`;
@@ -5525,6 +5678,22 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   window.openKaterCoach = function () { if (window.KaterCoach) KaterCoach.open(); };
   try { if (window.KaterCoach) KaterCoach.init(); } catch (e) { console.error(e); }
   // <<COACHADAPT-END>>
+
+  // <<BOWLSADAPT-START>>
+  function openBowls() {
+    if (!window.Bowls) return;
+    const items = [], scenes = new Map();
+    KATER_VOCAB.forEach((v, i) => { if (v.dir) return; const k = katerSceneKey(v); if (!scenes.has(k)) scenes.set(k, 'חלק ' + v.part + ' · ' + v.scene); items.push({ id: i, de: v.de, he: spCleanHe(v.he), pos: v.pos, cat: k }); });
+    Bowls.open({
+      title: 'קערות מילים', items: items, allLabel: 'כל המילים של התפקיד',
+      categories: Array.from(scenes.entries()).map(([id, label]) => ({ id: id, label: label })),
+      getKnown: () => new Set(getKaterVocabKnown()),
+      setKnown: (id, on) => { const s = new Set(getKaterVocabKnown()); if (on) s.add(id); else s.delete(id); safeSet('delearn_kater_vocab_known', JSON.stringify([...s])); },
+      speak: t => { try { speak(String(t), null); } catch (e) {} },
+      onClose: () => { try { renderKater(); } catch (e) {} }
+    });
+  }
+  // <<BOWLSADAPT-END>>
 
   switchTab('kater');
   renderKater();
