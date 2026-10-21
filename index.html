@@ -1605,6 +1605,10 @@
   .sp-card.bad { background: #fbdcd8; border-color: #e8958c; color: #a8281c; }
   .sp-card.shake { animation: spShake .45s; }
   @keyframes spShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-9px); } 40% { transform: translateX(9px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(6px); } }
+  .sp-note { margin: 4px 0 10px; text-align: center; } .sp-note.show { background: #fff8d6; color: #6b5200; border: 2px solid #ffe27a; border-radius: 14px; padding: 8px 12px; font-size: 15px; text-align: right; display: flex; gap: 8px; align-items: flex-start; } .sp-note.show span { flex: 1; white-space: pre-wrap; } .sp-note button { font: inherit; cursor: pointer; } .sp-note.show button { background: none; border: 0; font-size: 17px; padding: 0 2px; }
+  .sp-note .add { border: 2px dashed var(--line, #d5d5d5); background: none; color: var(--ink-soft, #777); border-radius: 14px; padding: 7px 14px; font-size: 14px; font-weight: 700; }
+  .sp-note textarea { width: 100%; box-sizing: border-box; min-height: 58px; border: 2px solid #1cb0f6; border-radius: 14px; padding: 8px 10px; font: inherit; font-size: 15px; color: inherit; background: var(--surface, #fff); resize: none; direction: rtl; }
+  .sp-note-acts { display: flex; gap: 8px; margin-top: 6px; } .sp-note-acts button { flex: 1; border: 0; border-radius: 12px; padding: 8px; font-weight: 800; background: #1cb0f6; color: #fff; } .sp-note-acts button.sec { background: var(--surface, #fff); color: inherit; border: 2px solid var(--line, #e5e5e5); }
   .sp-heard { min-height: 22px; text-align: center; font-size: 14px; color: var(--ink-soft, #8a867f); direction: ltr; margin: 4px 0 8px; }
   .sp-heard.err { color: #a8281c; direction: rtl; }
   .sp-actions { display: flex; align-items: center; justify-content: center; gap: 12px; }
@@ -1886,6 +1890,14 @@
     if (S.msg) heard = '<div class="sp-heard err">' + esc(S.msg) + '</div>';
     else if (S.heard) heard = '<div class="sp-heard">' + esc(S.heard) + '</div>';
     else heard = '<div class="sp-heard"></div>';
+    let noteBox = '';
+    const NG = S.opts.getNote || (window.SPEAK_NOTES && window.SPEAK_NOTES.get), NS = S.opts.setNote || (window.SPEAK_NOTES && window.SPEAK_NOTES.set);
+    if (S.state !== 'ask' && NG) {
+      let nt = ''; try { nt = NG(c) || ''; } catch (e) {}
+      if (S.noteEdit && NS) noteBox = '<div class="sp-note"><textarea id="spNoteTx" placeholder="אסוציאציה, משפט, צליל דומה בעברית…">' + esc(nt) + '</textarea><div class="sp-note-acts"><button id="spNoteSave">שמירה</button><button class="sec" id="spNoteCancel">ביטול</button></div></div>';
+      else if (nt) noteBox = '<div class="sp-note show"><span>💡 ' + esc(nt) + '</span>' + (NS ? '<button id="spNoteEdit" aria-label="עריכה">✏️</button>' : '') + '</div>';
+      else if (NS) noteBox = '<div class="sp-note"><button class="add" id="spNoteEdit">💡 איך אזכור את המילה? הוסיפו אסוציאציה</button></div>';
+    }
     let actions;
     if (S.state !== 'ask') {
       actions = '<div class="sp-actions"><button class="sp-redo" id="spRedo" title="השמעה">🔊</button><button class="sp-next" id="spNext">' + (S.state === 'ok' ? 'המשך' : 'הבנתי, הלאה') + '</button></div>';
@@ -1906,7 +1918,7 @@
       '<div class="sp-combo"><span>' + (S.combo >= 2 ? 'רצף ×' + S.combo : '') + '</span>' + pill + '</div>' +
       '<div class="sp-title">' + esc(S.opts.title || 'אמרו את המילה בגרמנית') + '</div>' +
       '<div class="sp-stage">' + layers + (S.ghost ? '<div class="sp-card bad ghost">' + S.ghost + '</div>' : '') + '<div class="' + cardCls + '" id="spCard">' + cardInner + '</div></div>' +
-      banner + heard + actions + '<div class="sp-links">' + links + '</div>' + (S.debug ? '<pre id="spDbg" style="font-size:11px;direction:ltr;text-align:left;margin:6px 0 0;max-height:120px;overflow:auto;color:var(--ink-soft,#8a867f);white-space:pre-wrap">' + esc((S.log || []).join('\n')) + '</pre>' : '');
+      banner + heard + noteBox + actions + '<div class="sp-links">' + links + '</div>' + (S.debug ? '<pre id="spDbg" style="font-size:11px;direction:ltr;text-align:left;margin:6px 0 0;max-height:120px;overflow:auto;color:var(--ink-soft,#8a867f);white-space:pre-wrap">' + esc((S.log || []).join('\n')) + '</pre>' : '');
     S.shake = false; S.enter = false; S.ghost = null;
     bind();
     if (S.typing && S.state === 'ask') { const i = document.getElementById('spInput'); if (i && S.focusInput) { i.focus(); } }
@@ -1919,6 +1931,9 @@
     if ($('spLiveStop')) $('spLiveStop').onclick = () => { stopLive(); render(); };
     if ($('spRedo')) $('spRedo').onclick = () => { const c = cur(); speakWord(c.display || c.answer, true); };
     if ($('spNext')) $('spNext').onclick = advance;
+    if ($('spNoteEdit')) $('spNoteEdit').onclick = () => { S.noteEdit = true; render(); const t = document.getElementById('spNoteTx'); if (t) t.focus(); };
+    if ($('spNoteCancel')) $('spNoteCancel').onclick = () => { S.noteEdit = false; render(); };
+    if ($('spNoteSave')) $('spNoteSave').onclick = () => { const NS = S.opts.setNote || (window.SPEAK_NOTES && window.SPEAK_NOTES.set); try { if (NS) NS(cur(), document.getElementById('spNoteTx').value.trim()); } catch (e) {} S.noteEdit = false; render(); };
     if ($('spSkip')) $('spSkip').onclick = () => { reveal(false); };
     if ($('spToggle')) $('spToggle').onclick = () => {
       S.msg = ''; S.heard = ''; S.focusInput = true;
@@ -2062,6 +2077,7 @@
     try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
     if (S.state === 'bad') { const pc = cur(); S.ghost = '<div class="sp-answer">' + esc(pc.display || pc.answer) + '</div><div class="sp-sub">' + esc(pc.prompt) + '</div>'; } // a missed card slides back behind the stack
     S.enter = true;
+    S.noteEdit = false;
     S.idx++; S.attempts = 0; S.state = 'ask'; S.msg = ''; S.heard = ''; S.wrong = false; S.wrongHeard = '';
     S.muteUntil = Date.now() + 350; consumeNow();
     if (S.live && !S.typing && !S.done && !rec) { clearTimeout(S.resumeT); later(openRec, 150); } // the word that was playing is cut off, so listen again right away
@@ -2167,6 +2183,8 @@
   .dl-tag.weak { background: #ffe9cc; color: #c76a00; } .dl-tag.new { background: #e6e8ff; color: #4b55c9; } .dl-tag.known { background: #e1f7c8; color: #3d8c00; }
   .dl-pk-foot { padding: 10px 0 max(12px, env(safe-area-inset-bottom)); background: var(--bg, #fff); border-top: 1px solid var(--line, #e5e5e5); }
   .dl-pk-foot .dl-btn { width: 100%; } .dl-btn[disabled] { opacity: .45; box-shadow: none; }
+  .dl-fl { display: block; margin: 12px 0 0; font-size: 13.5px; font-weight: 800; color: var(--ink-soft, #777); } .dl-fl input, .dl-fl select, .dl-fl textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 5px; border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: var(--ink, #3c3c3c); border-radius: 12px; padding: 11px 12px; font: inherit; font-size: 17px; font-weight: 600; } .dl-fl textarea { min-height: 64px; resize: none; direction: rtl; } .dl-fl input:focus, .dl-fl textarea:focus { outline: none; border-color: var(--fun-blue, #1cb0f6); }
+  .ls-hint-x { font-size: 13.5px; color: var(--ink-soft, #777); }
   .dl-ov { position: fixed; inset: 0; z-index: 8400; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
   .dl-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
   `;
@@ -2203,10 +2221,15 @@
     function picker(host, k, done) {
       const kn = cfg.getKnown(), cur = new Set(wordsOf(k).map(String)), where = new Map();
       Object.keys(data).forEach(dk => { if (dk !== k) data[dk].forEach(id => where.set(String(id), dk)); });
-      const all = cfg.items().map((it, i) => ({ it: it, i: i, st: statusOf(it, kn), pr: cfg.priority ? cfg.priority(it) : (kn.has(it.id) ? 2 : 1) }))
-        .filter(x => !cur.has(String(x.it.id)));
-      all.sort((a, b) => a.pr - b.pr || a.i - b.i);
-      const SUGN = 30; all.forEach((x, r) => { x.rec = x.pr < 2 && !where.has(String(x.it.id)) && r < SUGN; });
+      let all = []; const mine = new Set();
+      const build = () => {
+        const kn2 = cfg.getKnown();
+        all = cfg.items().map((it, i) => ({ it: it, i: i, st: statusOf(it, kn2), pr: mine.has(String(it.id)) ? -1 : (cfg.priority ? cfg.priority(it) : (kn2.has(it.id) ? 2 : 1)) }))
+          .filter(x => !cur.has(String(x.it.id)));
+        all.sort((a, b) => a.pr - b.pr || a.i - b.i);
+        const SUGN = 30; all.forEach((x, r) => { x.rec = x.pr < 2 && x.pr >= 0 && !where.has(String(x.it.id)) && r < SUGN; x.mine = mine.has(String(x.it.id)); });
+      };
+      build();
       const chosen = new Set(); let q = '', cat = 'all';
       const room = () => Math.max(0, GOAL - cur.size);
       const ov = document.createElement('div'); ov.className = 'dl-pk'; document.body.appendChild(ov);
@@ -2214,9 +2237,9 @@
       const tagTxt = { known: 'ידועה', weak: 'חלשה', new: 'חדשה' };
       function list() {
         const rows = all.filter(x => (cat === 'all' || x.it.cat === cat) && (!q || (x.it.de + ' ' + x.it.he).toLowerCase().indexOf(q) >= 0));
-        const rec = rows.filter(x => x.rec), rest = rows.filter(x => !x.rec);
+        const own = rows.filter(x => x.mine), rec = rows.filter(x => x.rec && !x.mine), rest = rows.filter(x => !x.rec && !x.mine);
         const rowH = x => { const id = String(x.it.id), on = chosen.has(id), w = where.get(id); return '<button class="dl-it' + (on ? ' on' : '') + '" data-id="' + esc(id) + '"><span class="dl-ck">' + (on ? '✓' : '') + '</span><div class="t"><div class="d">' + esc(x.it.de) + '</div><div class="h">' + esc(x.it.he) + '</div></div>' + (w ? '<span class="dl-tag">כבר ב-' + Number(w.slice(8)) + '.' + Number(w.slice(5, 7)) + '</span>' : '') + '<span class="dl-tag ' + x.st + '">' + tagTxt[x.st] + '</span></button>'; };
-        return (rec.length ? '<div class="dl-pk-sec">✨ מומלצות — מילים שעוד לא שולטים בהן</div>' + rec.map(rowH).join('') : '') +
+        return (own.length ? '<div class="dl-pk-sec">✏️ המילים שהוספת בעצמך</div>' + own.map(rowH).join('') : '') + (rec.length ? '<div class="dl-pk-sec">✨ מומלצות — מילים שעוד לא שולטים בהן</div>' + rec.map(rowH).join('') : '') +
           (rest.length ? '<div class="dl-pk-sec">' + (rec.length ? 'שאר המילים' : 'מילים') + ' (' + rest.length + ')</div>' + rest.map(rowH).join('') : '') +
           (!rows.length ? '<div class="dl-empty">לא נמצאו מילים.</div>' : '');
       }
@@ -2231,7 +2254,7 @@
       const catOpts = (cfg.categories || []).map(c => '<option value="' + esc(c.id) + '">' + esc(c.label) + '</option>').join('');
       ov.innerHTML = '<div class="dl-pk-top"><button class="dl-x" id="pkX">✕</button><h2>בחירת מילים ל' + esc(label) + '</h2><span class="dl-chip" id="pkChip"></span></div>' +
         '<div class="dl-pk-tools"><input id="pkQ" type="search" placeholder="חיפוש מילה…">' + (catOpts ? '<select id="pkCat"><option value="all">' + esc(cfg.allLabel || 'כל הקטגוריות') + '</option>' + catOpts + '</select>' : '') + '</div>' +
-        '<div class="dl-pk-tools"><button class="sug" id="pkSug">✨ הצע לי ' + (room() || 5) + '</button><button id="pkClr">נקה בחירה</button></div>' +
+        '<div class="dl-pk-tools"><button class="sug" id="pkSug">✨ הצע לי ' + (room() || 5) + '</button><button id="pkClr">נקה בחירה</button>' + (cfg.addCustom ? '<button id="pkOwn" style="border-color:var(--fun-green,#58cc02);color:var(--fun-green,#58cc02);box-shadow:0 3px 0 var(--fun-green,#58cc02)">➕ מילה משלי</button>' : '') + '</div>' +
         '<div class="dl-pk-list" id="pkList"></div><div class="dl-pk-foot"><button class="dl-btn" id="pkOk" disabled></button></div>';
       const L = ov.querySelector('#pkList'); const render = () => { L.innerHTML = list(); bindList(); foot(); };
       render();
@@ -2243,6 +2266,29 @@
         // suggestions only pre-tick the words; the choice stays yours
         let need = (room() || 5) - chosen.size; for (const x of all) { if (need <= 0) break; if (x.rec && !chosen.has(String(x.it.id)) && (cat === 'all' || x.it.cat === cat)) { chosen.add(String(x.it.id)); need--; } }
         q = ''; ov.querySelector('#pkQ').value = ''; render(); L.scrollTop = 0;
+      };
+      if (ov.querySelector('#pkOwn')) ov.querySelector('#pkOwn').onclick = () => {
+        const f = document.createElement('div'); f.className = 'dl-pk dl-pk-form'; f.style.zIndex = 8600; ov.appendChild(f);
+        f.innerHTML = '<div class="dl-pk-top"><button class="dl-x" id="fmX">✕</button><h2>הוספת מילה משלך</h2></div>' +
+          '<div style="flex:1;overflow-y:auto;padding-top:10px"><div class="ls-hint-x">המילה נשמרת באוצר המילים הקבוע שלך (בקטגוריה "המילים שלי") ונוספת לבחירה של היום.</div>' +
+          '<label class="dl-fl">המילה או הביטוי בגרמנית<input id="fmDe" type="text" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="למשל: die Steckdose"></label>' +
+          '<label class="dl-fl">התרגום בעברית<input id="fmHe" type="text" dir="rtl" autocomplete="off" placeholder="למשל: שקע חשמל"></label>' +
+          '<label class="dl-fl">אם זה שם עצם: der / die / das (לא חובה)<select id="fmG"><option value="">לא שם עצם / לא יודע</option><option>der</option><option>die</option><option>das</option></select></label>' +
+          '<label class="dl-fl">איך אזכור אותה? אסוציאציה (לא חובה)<textarea id="fmNote" placeholder="צליל דומה בעברית, משפט, תמונה בראש…"></textarea></label>' +
+          '<div id="fmErr" style="color:#c4264a;font-weight:700;min-height:20px"></div></div>' +
+          '<div class="dl-pk-foot"><button class="dl-btn" id="fmOk">הוסף לבחירה</button></div>';
+        const $f = id => f.querySelector('#' + id);
+        $f('fmX').onclick = () => f.remove();
+        $f('fmDe').focus();
+        $f('fmOk').onclick = () => {
+          const de = $f('fmDe').value.trim(), he = $f('fmHe').value.trim();
+          if (!de || !he) { $f('fmErr').textContent = 'צריך למלא גם את המילה בגרמנית וגם את התרגום.'; return; }
+          let r = null; try { r = cfg.addCustom({ de: de, he: he, gender: $f('fmG').value, note: $f('fmNote').value.trim() }); } catch (e) { r = null; }
+          if (!r) { $f('fmErr').textContent = 'לא הצלחתי להוסיף. נסו שוב.'; return; }
+          const id = String(r.id);
+          if (cur.has(id)) { $f('fmErr').textContent = 'המילה הזאת כבר ברשימה של היום.'; return; }
+          mine.add(id); chosen.add(id); build(); f.remove(); q = ''; ov.querySelector('#pkQ').value = ''; cat = 'all'; const sel = ov.querySelector('#pkCat'); if (sel) sel.value = 'all'; render(); L.scrollTop = 0;
+        };
       };
       ov.querySelector('#pkOk').onclick = () => {
         const idOf = new Map(cfg.items().map(it => [String(it.id), it.id]));
@@ -5815,6 +5861,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   // <<SPEAKADAPT-START>>
 
   function spCleanHe(s) { return String(s || '').replace(/\s*\([^)]*[A-Za-z][^)]*\)/g, '').replace(/\s+/g, ' ').trim(); }
+  window.SPEAK_NOTES = { get: c => { try { return getKaterVocabNotes()[String(c.answer).toLowerCase()] || ''; } catch (e) { return ''; } }, set: (c, t) => { try { const n = getKaterVocabNotes(), k = String(c.answer).toLowerCase(); if (t) n[k] = t; else delete n[k]; safeSet('delearn_kater_vocab_notes', JSON.stringify(n)); } catch (e) {} } };
   function spKaterGroups() {
     const known = new Set(getKaterVocabKnown());
     const g = [{ id: 'all', label: 'כל אוצר המילים', count: katerVocabLive().length, section: '' }];
