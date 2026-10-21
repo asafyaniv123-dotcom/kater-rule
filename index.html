@@ -2528,7 +2528,7 @@
   const LV = [null,
     { n: 'זכירה', c: '#0F7B6C', icon: '🧠', what: 'מילים של הסצנה', why: 'אי אפשר לשנן משפט כשאין לך את אבני הבניין שלו. קודם מכירים את המילים.' },
     { n: 'הבנה', c: '#C9C200', icon: '👂', what: 'קריאה והאזנה עם תרגום', why: 'קוראים ומאזינים עם התרגום, עד שכל משפט ברור: מה הדמות רוצה, ולמה היא אומרת את זה.' },
-    { n: 'יישום', c: '#E0553F', icon: '🗣️', what: 'אומרים את השורות בקול', why: 'רואים את המשמעות בעברית ואומרים את השורה בגרמנית בקול. פה זה מתחיל להיכנס לפה.' },
+    { n: 'יישום', c: '#E0553F', icon: '🗣️', what: 'שומעים וחוזרים, אחר כך עם רמז, אחר כך מהזיכרון', why: 'בחבילות קטנות של 4 שורות: קודם שומעים כל שורה וחוזרים אחריה בקול, אחר כך אותן שורות עם רמז של האותיות הראשונות, ורק בסוף מהזיכרון. ככה אף פעם לא מתחילים מדף ריק.' },
     { n: 'ניתוח', c: '#F0901A', icon: '🧩', what: 'משלימים מילה חסרה במשפט', why: 'מפרקים את המשפט ומשלימים מילה חסרה: ככה מבינים איך הוא בנוי, ולא רק זוכרים צלילים.' },
     { n: 'הערכה', c: '#0B6B5E', icon: '🎯', what: 'בוחנים את עצמך בלי רמזים', why: 'רק הרמז מהבמה, בלי טקסט. לענות בכנות לעצמך זה מה שמראה מה באמת נכנס.' },
     { n: 'יצירה', c: '#C9C200', icon: '🎭', what: 'ביצוע מול ההקלטה', why: 'ההקלטה משתיקה את השורות שלך ואתה משחק את התפקיד מול שאר הדמויות, כמו על הבמה.' }
@@ -2614,7 +2614,7 @@
     switch (L) {
       case 1: return Math.max(4, Math.ceil(sc.vocab.length * 0.6));
       case 2: return Math.max(5, Math.ceil(sc.span / 60 * 1.1) + 3);
-      case 3: return Math.ceil(sc.lines.length * 0.5) + 3;
+      case 3: return Math.ceil(sc.lines.length * 1.2) + 3;
       case 4: return Math.max(4, Math.ceil(clozeItems(sc).length * 0.45) + 2);
       case 5: return Math.ceil(sc.lines.length * 0.4) + 3;
       case 6: return Math.max(5, Math.ceil(sc.span / 60 * 1.15) + 2);
@@ -2624,7 +2624,7 @@
   function stepFor(sc, L) {
     return { id: 'L' + L + ':' + sc.key, type: ['', 'vocab', 'read', 'apply', 'analyze', 'evaluate', 'create'][L], lv: L, key: sc.key, title: LV[L].n + ' · ' + sc.name, what: LV[L].what, min: est(sc, L) };
   }
-  function levelsFor(compress) { return compress ? [1, 3, 5, 6] : [1, 2, 3, 4, 5, 6]; }
+  function levelsFor(compress) { return compress ? [2, 3, 5, 6] : [1, 2, 3, 4, 5, 6]; }
   function isDone(sc, L) {
     const s = sceneState(sc.key);
     if (s.done[L]) return true;
@@ -2654,7 +2654,7 @@
   function generate(minutes) {
     const M = modeNow(), steps = [], date = today();
     let used = 0;
-    if (!ST.diag.done) { steps.push({ id: 'diag', type: 'diag', lv: 0, key: '', title: 'בדיקת מצב · איפה אתה עומד', what: 'שתי שורות מכל סצנה, בלי רמזים', min: 12 }); used += 12; }
+    if (!ST.diag.done) { steps.push({ id: 'diag', type: 'diag', lv: 0, key: '', title: 'איפה אתה עומד', what: 'לוחצים על מה שמתאים, בלי מבחן', min: 2 }); used += 2; }
     dueReviews(date).slice(0, 3).forEach(sc => { steps.push({ id: 'rv:' + date + ':' + sc.key, type: 'review', lv: 5, key: sc.key, title: 'חזרה · ' + sc.name, what: 'שש שורות מהסצנה, בלי רמזים', min: 6 }); used += 6; });
     if (M.runPhase) {
       ['1', '2'].forEach(p => {
@@ -2691,11 +2691,11 @@
   function message(next) {
     const M = modeNow(), n = scenes().filter(s => isDone(s, 5)).length, total = scenes().length;
     const dayNo = dnum(today()) - dnum(ST.start) + 1;
-    if (!ST.diag.done) return 'שלום אסף. נשארו ' + M.left + ' ימים עד הטיסה. לפני שנתחיל אני צריך לדעת איפה אתה עומד: בדיקה של כ-12 דקות, שתי שורות מכל סצנה. בלי ציונים ובלי לחץ, זה רק כדי שלא תבזבז זמן על מה שכבר ידוע.';
+    if (!ST.diag.done) return 'שלום אסף. נשארו ' + M.left + ' ימים עד הטיסה. לפני שנתחיל: דקה אחת לסמן איפה אתה עומד בכל סצנה. זה לא מבחן. אם הכול חדש לך, זה לגמרי בסדר: מתחילים מאפס, בחבילות קטנות, וכל שלב נבנה על הקודם.';
     if (M.runPhase) return 'הגענו לשלב האחרון: ' + (M.left === 1 ? 'מחר טסים' : 'עוד יומיים טסים') + '. לא לומדים כלום חדש. עושים הרצות מלאות מול ההקלטה ומחזקים את השורות החלשות.';
     if (!next) return 'סיימת את כל מה שתוכנן להיום. זמן מצוין לעצור, לנוח ולישון. השינה היא חלק מהשינון.';
     let m = 'יום ' + dayNo + ' · נשארו ' + M.left + ' ימים. ' + n + ' מתוך ' + total + ' סצנות כבר בידיים שלך.';
-    if (M.compress) m += ' הקצב מחייב מצב אינטנסיבי: לסצנות הבאות אני מדלג על הניתוח וההבנה הממושכת, ובעיקר מתרגל ובוחן.';
+    if (M.compress) m += ' הקצב מחייב מצב אינטנסיבי: אני מדלג על המילים הבודדות ועל ההשלמות (המילים נמצאות בקערות ובלוח 15 ביום), ומתמקד בהבנה, בשינון ובבחינה.';
     return m;
   }
 
@@ -2828,14 +2828,14 @@
       h += '<div class="co-sc"><span class="co-n">' + esc(s.name) + '</span><span class="co-dots">' + dots + '</span><span class="co-pct">' + Math.round(mastery(s) * 100) + '%</span></div>';
     });
     h += '</div><div class="co-h">כמה זמן ביום?</div><div class="co-chips" id="coBudget">' + [60, 90, 120, 150, 180].map(m => '<button class="co-chip' + (ST.budget === m ? ' on' : '') + '" data-m="' + m + '">' + (m / 60) + ' שעות</button>').join('') + '</div>';
-    h += '<div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap"><button class="co-link" id="coDiag">בדוק אותי שוב</button><button class="co-link" id="coMore">הוסף עוד צעד להיום</button><button class="co-link" id="coReset">איפוס המסלול</button></div></div>';
+    h += '<div style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap"><button class="co-link" id="coDiag">סמן מחדש איפה אני עומד</button><button class="co-link" id="coMore">הוסף עוד צעד להיום</button><button class="co-link" id="coReset">איפוס המסלול</button></div></div>';
     el.innerHTML = h;
     const $ = id => el.querySelector('#' + id);
     $('coClose').onclick = () => { unmount(); refreshBanner(); };
     if ($('coGo')) $('coGo').onclick = () => run(next);
     el.querySelectorAll('.co-step').forEach(n => { n.onclick = () => { const s = d.plan[+n.dataset.i]; if (s && !d.done[s.id]) run(s); }; });
     el.querySelectorAll('#coBudget .co-chip').forEach(b => { b.onclick = () => { ST.budget = +b.dataset.m; const dd = dayRec(); dd.plan = dd.plan.filter(s => dd.done[s.id]); save(ST); home(); }; });
-    $('coDiag').onclick = () => { ST.diag.done = false; const dd = dayRec(); dd.plan = dd.plan.filter(s => dd.done[s.id]); dd.plan.push({ id: 'diag:' + Date.now(), type: 'diag', lv: 0, key: '', title: 'בדיקת מצב · איפה אתה עומד', what: 'שתי שורות מכל סצנה, בלי רמזים', min: 12 }); save(ST); home(); };
+    $('coDiag').onclick = () => { ST.diag.done = false; const dd = dayRec(); dd.plan = dd.plan.filter(s => dd.done[s.id]); dd.plan.push({ id: 'diag:' + Date.now(), type: 'diag', lv: 0, key: '', title: 'איפה אתה עומד', what: 'לוחצים על מה שמתאים, בלי מבחן', min: 2 }); save(ST); home(); };
     $('coMore').onclick = () => { const dd = dayRec(); const more = generate(45).filter(s => !dd.plan.some(p => p.id === s.id)); if (!more.length) { home('אין עוד מה להוסיף: כל השלבים של הסצנות כבר הושלמו.'); return; } dd.plan = dd.plan.concat(more); save(ST); home(); };
     $('coReset').onclick = () => { if (confirm('לאפס את כל המסלול? (הסימונים של ידעתי/לא ידעתי נשארים)')) { ST = load(); ST = { v: 1, start: today(), budget: ST.budget, diag: { done: false, res: {} }, sc: {}, days: {}, lastOpen: today() }; save(ST); home(); } };
     el.scrollTop = 0;
@@ -2849,6 +2849,18 @@
     let note = '';
     const s = step.key && step.type !== 'run' && step.type !== 'weak' ? sceneState(step.key) : null, sc = s ? sceneByKey(step.key) : null;
     let ok = true;
+    if (step.type === 'diag' && info.self) {
+      ST.diag.done = true; ST.diag.res = {};
+      let some = 0, lots = 0;
+      scenes().forEach(sc2 => {
+        const lv = info.self[sc2.key] || 0, st2 = sceneState(sc2.key); ST.diag.res[sc2.key] = lv;
+        if (lv >= 1) { st2.done[2] = st2.done[2] || Date.now(); some++; }
+        if (lv >= 2) { st2.done[3] = st2.done[3] || Date.now(); lots++; }
+      });
+      note = lots || some ? 'סימנתי: ' + some + ' סצנות שכבר קראת או שמעת, ומהן ' + lots + ' שאתה מכיר היטב. את השאר אנחנו בונים מההתחלה, צעד אחר צעד.' : 'מצוין, מתחילים מאפס. בלי לחץ: קודם מבינים, אחר כך שומעים וחוזרים, ורק אחר כך מעלים את הרף.';
+      d.plan = d.plan.filter(x => d.done[x.id] || x.id === step.id); d.done[step.id] = Date.now(); d.plan = d.plan.filter(x => d.done[x.id]); d.plan = d.plan.concat(generate(Math.max(45, ST.budget - d.min)));
+      save(ST); cur = null; return home(note);
+    }
     if (step.type === 'diag') {
       ST.diag.done = true; ST.diag.res = info.byScene || {};
       scenes().forEach(sc2 => {
@@ -2864,8 +2876,8 @@
     }
     if (step.type === 'apply') {
       const sc2 = info.ratio; ok = sc2 >= 0.6 || (s.tries || 0) >= 1;
-      if (!ok) { s.tries = (s.tries || 0) + 1; note = 'ידעת ' + Math.round(sc2 * 100) + '%. נעשה עוד סיבוב קצר על מה שלא נכנס, זה לגמרי טבעי.'; }
-      else { s.done[3] = Date.now(); s.tries = 0; note = 'יפה! ' + Math.round(sc2 * 100) + '% ידעת. עכשיו השורות כבר זזות לפה.'; }
+      if (!ok) { s.tries = (s.tries || 0) + 1; s.pk = 0; note = 'ידעת ' + Math.round(sc2 * 100) + '%. נעשה עוד סיבוב קצר על מה שלא נכנס, זה לגמרי טבעי.'; }
+      else { s.done[3] = Date.now(); s.tries = 0; s.pk = 0; note = 'יפה! ' + Math.round(sc2 * 100) + '% ידעת. עכשיו השורות כבר זזות לפה.'; }
     } else if (step.type === 'evaluate') {
       if (info.ratio >= 0.7) { s.done[5] = Date.now(); s.rv = { n: 0, due: dnum(today()) + 1 }; note = 'מצוין: ' + Math.round(info.ratio * 100) + '% בלי רמזים. הסצנה "' + sc.name + '" כבר אצלך. אחזור אליה מחר לחזרה קצרה.'; }
       else { delete s.done[3]; ok = false; note = 'בלי רמזים ידעת ' + Math.round(info.ratio * 100) + '%. אין בעיה: חוזרים לשלב היישום, ואז נבחן שוב. ככה זה נשאר בראש.'; }
@@ -2916,11 +2928,7 @@
     const sc = step.key && step.type !== 'run' ? sceneByKey(step.key) : null;
     const back = () => { cur = null; home(); };
     const backIfNotDone = () => { if (cur) { cur = null; home(); } };
-    if (step.type === 'diag') {
-      const items = [];
-      scenes().forEach(s => { const pick = s.lines.length <= 2 ? s.lines.slice() : [s.lines[Math.floor(s.lines.length / 3)], s.lines[Math.floor(s.lines.length * 2 / 3)]]; linesItems(pick, 'diag').forEach(it => { it.scene = s.key; items.push(it); }); });
-      return recite({ title: 'בדיקת מצב', intro: 'אין ציונים. עונה בכנות כדי שהמסלול יתאים לך. כל כרטיס: הרמז מהבמה, אתה אומר את השורה שלך בקול, ואז לוחץ על "הצג".', items: items, mode: 'diag', mark: true, onFinish: sum => { const by = {}; sum.results.forEach(r => { const o = by[r.item.scene] || (by[r.item.scene] = { n: 0, s: 0 }); o.n++; o.s += r.score; }); finish(step, { byScene: by, ratio: sum.ratio }); }, onClose: backIfNotDone });
-    }
+    if (step.type === 'diag') return selfAssess(step);
     if (step.type === 'vocab') {
       return C.speakOpen({ title: 'אמרו את המילה בגרמנית', preset: { group: 's:' + step.key, count: 'all', preferNew: false }, storeKey: 'delearn_kater_sp_coach', onFinish: sum => { finish(step, { sum: sum }); }, onClose: backIfNotDone });
     }
@@ -2929,11 +2937,15 @@
       return C.speakOpen({ title: 'השלימו את המילה החסרה', items: items, preset: { group: 'all', count: 'all', preferNew: false }, storeKey: 'delearn_kater_sp_cloze', noProgress: true, onFinish: sum => { finish(step, { sum: sum }); }, onClose: backIfNotDone });
     }
     if (step.type === 'apply') {
-      return recite({ title: 'יישום · ' + sc.name, intro: 'רואים את המשמעות בעברית. אמרו את השורה בגרמנית בקול, ואז "הצג" כדי לבדוק.', items: linesItems(sc.lines, 'apply'), mode: 'apply', mark: 'up', onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+      // a stopped session resumes at the pack where it stopped; a repeat round only takes the lines that are not known yet
+      const ss = sceneState(step.key), kn = new Set(C.known());
+      let idxs = sc.lines, from = ss.pk || 0;
+      if (ss.tries > 0) { const left = sc.lines.filter(i => !kn.has(i)); if (left.length) { idxs = left; from = 0; } }
+      return recite({ title: 'יישום · ' + sc.name, onPack: p => { sceneState(step.key).pk = p + 1; save(ST); }, intro: 'חבילות של 4 שורות. שלב 1: שומעים וחוזרים בקול. שלב 2: אותן שורות עם רמז של האותיות הראשונות. שלב 3: מהזיכרון. אפשר לבקש רמז בכל רגע.', items: learnItems(idxs, from), mode: 'apply', mark: 'up', scaffold: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
     }
     if (step.type === 'evaluate') {
       const arr = linesItems(sc.lines, 'eval'); for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
-      return recite({ title: 'הערכה · ' + sc.name, intro: 'בלי עזרה: רק הרמז מהבמה. אמרו את השורה שלכם בקול, ואז "הצג".', items: arr, mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
+      return recite({ title: 'הערכה · ' + sc.name, intro: 'רק הרמז מהבמה. אמרו את השורה שלכם בקול, ואז "הצג". לא יודעים? כפתור "רמז" פותח קודם את המשמעות ואז את האותיות הראשונות (שורה שענית עליה עם רמז נחשבת "כמעט").', items: arr, mode: 'eval', mark: true, onFinish: sum => finish(step, { ratio: sum.ratio }), onClose: backIfNotDone });
     }
     if (step.type === 'review') {
       const kn = new Set(C.known());
@@ -2963,49 +2975,101 @@
     }
   }
 
-  // ---------------- recite engine (self-rated) ----------------
+  // ---------------- "where do you stand": a quick self-assessment, not a test ----------------
+  function selfAssess(step) {
+    SPCSS();
+    const root = document.createElement('div'); root.className = 'co-ov'; document.body.appendChild(root);
+    const sel = {}; scenes().forEach(s => { sel[s.key] = 0; });
+    const opts = [['🌱', 'חדש לי'], ['👂', 'שמעתי / קראתי'], ['🎯', 'אני מכיר היטב']];
+    const draw = () => {
+      let h = '<div class="co-wrap"><div class="co-top"><button class="co-x" id="saX" aria-label="סגירה">✕</button><h2 style="font-size:20px">איפה אתה עומד?</h2><span style="width:34px"></span></div>' +
+        '<div class="co-msg">זה לא מבחן. לכל סצנה סמן מה הכי מתאים. אם לא בטוח, השאר "חדש לי": ממילא עוברים על הכול בקצב שלך.</div>' +
+        '<button class="co-go" id="saNew" style="margin-bottom:6px">🌱 הכול חדש לי, מתחילים מאפס</button><div class="co-h">או סמן סצנה־סצנה</div>';
+      let part = '';
+      scenes().forEach(sc => {
+        if (sc.part !== part) { part = sc.part; h += '<div class="co-h" style="font-size:14px;color:var(--ink-soft)">חלק ' + esc(part) + '</div>'; }
+        h += '<div class="co-sc" style="flex-wrap:wrap;margin-bottom:6px"><div class="co-n" style="flex:1 1 100%">' + esc(sc.name) + ' <small style="color:var(--ink-soft)">· ' + sc.lines.length + ' שורות</small></div><div class="co-chips" style="flex:1 1 100%">' + opts.map((o, k) => '<button class="co-chip' + (sel[sc.key] === k ? ' on' : '') + '" data-k="' + esc(sc.key) + '" data-v="' + k + '">' + o[0] + ' ' + o[1] + '</button>').join('') + '</div></div>';
+      });
+      h += '<button class="co-go" id="saOk" style="margin-top:14px">סיימתי לסמן</button></div>';
+      root.innerHTML = h;
+      root.querySelector('#saX').onclick = () => { root.remove(); if (cur) { cur = null; home(); } };
+      root.querySelector('#saNew').onclick = () => { root.remove(); finish(step, { self: {} }); };
+      root.querySelector('#saOk').onclick = () => { root.remove(); finish(step, { self: sel }); };
+      root.querySelectorAll('.co-chip').forEach(b => { b.onclick = () => { sel[b.dataset.k] = +b.dataset.v; const y = root.scrollTop; draw(); root.scrollTop = y; }; });
+    };
+    draw();
+  }
+
+  // ---------------- graded learning: listen and repeat -> with a hint -> from memory, in packs of four lines ----------------
+  function maskDe(t) { return String(t || '').replace(/[A-Za-zÄÖÜäöüß]+/g, w => w.charAt(0) + '_'.repeat(Math.max(0, w.length - 1))); }
+  function learnItems(idxs, from) {
+    const base = linesItems(idxs, 'apply'), out = [], N = 4, nCh = Math.ceil(base.length / N);
+    for (let c = from || 0; c < nCh; c++) {
+      const ch = base.slice(c * N, c * N + N), tag = 'חבילה ' + (c + 1) + ' מתוך ' + nCh;
+      ch.forEach(it => out.push(Object.assign({}, it, { pack: c, mode: 'copy', stage: tag + ' · שלב 1 מתוך 3: שומעים וחוזרים' })));
+      ch.forEach(it => out.push(Object.assign({}, it, { pack: c, mode: 'hint', stage: tag + ' · שלב 2 מתוך 3: עם רמז' })));
+      ch.forEach(it => out.push(Object.assign({}, it, { pack: c, mode: 'apply', stage: tag + ' · שלב 3 מתוך 3: מהזיכרון' })));
+    }
+    return out;
+  }
+
+  // ---------------- recite engine (self-rated, with a hint ladder) ----------------
   function recite(o) {
     SPCSS();
     const C = $ctx();
-    const q = o.items.slice(); let i = 0, results = [], again = [], phase = 'ask', started = false;
+    const q = o.items.slice(); let i = 0, results = [], phase = 'ask', hl = 0, spokenAt = -1;
     const root = document.createElement('div'); root.className = 'co-ov'; document.body.appendChild(root);
     const finishNow = () => { root.remove(); if (o.onFinish) o.onFinish(summary()); };
-    function summary() { const n = results.length || 1, s = results.reduce((a, r) => a + r.score, 0); return { results: results, ratio: s / n }; }
+    function summary() { const n = results.length || 1, s = results.reduce((a, r) => a + r.score, 0); return { results: results, ratio: results.length ? s / n : 1 }; }
     function close() { root.remove(); if (o.onClose) o.onClose(); }
+    const ladder = it => it.mode === 'apply' ? ['mask'] : ['he', 'mask'];
     function draw() {
       if (i >= q.length) {
         if (!results.length) return finishNow();
         const sum = summary(), miss = results.filter(r => r.score < 1);
-        root.innerHTML = '<div class="co-wrap"><div class="co-top"><h2>' + esc(o.title) + '</h2><button class="co-x" id="rX">✕</button></div><div class="co-score">' + Math.round(sum.ratio * 100) + '%</div><div class="co-msg" style="text-align:center">' + (sum.ratio >= .8 ? 'מצוין!' : sum.ratio >= .5 ? 'בכיוון, יש מה לחזק.' : 'זה מה שבדיקה באה לגלות. משם בונים.') + '</div>' + (miss.length ? '<div class="co-h">מה עוד לא ישב</div><div class="co-miss">' + miss.slice(0, 40).map(r => '<div>' + esc(r.item.de) + '</div>').join('') + '</div>' : '') + '<div style="margin-top:14px"><button class="co-go" id="rDone">המשך</button></div></div>';
+        root.innerHTML = '<div class="co-wrap"><div class="co-top"><h2>' + esc(o.title) + '</h2><button class="co-x" id="rX">✕</button></div><div class="co-score">' + Math.round(sum.ratio * 100) + '%</div><div class="co-msg" style="text-align:center">' + (sum.ratio >= .8 ? 'מצוין!' : sum.ratio >= .5 ? 'בכיוון, חוזרים על מה שלא ישב.' : 'זה בסדר גמור. עכשיו אנחנו יודעים מה לחזק, וחוזרים לזה.') + '</div>' + (miss.length ? '<div class="co-h">מה עוד לא ישב</div><div class="co-miss">' + miss.slice(0, 40).map(r => '<div>' + esc(r.item.de) + '</div>').join('') + '</div>' : '') + '<div style="margin-top:14px"><button class="co-go" id="rDone">המשך</button></div></div>';
         root.querySelector('#rX').onclick = close; root.querySelector('#rDone').onclick = finishNow;
         return;
       }
-      const it = q[i], pct = Math.round(i / q.length * 100);
-      let card;
+      const it = q[i], pct = Math.round(i / q.length * 100), L = ladder(it);
       const who = it.prev ? '<div class="co-who">' + esc(it.prev.s) + '</div><div class="co-de">' + esc(it.prev.d) + '</div>' : '';
-      if (phase === 'ask') {
-        if (it.mode === 'apply') card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div><div class="co-big">' + esc(it.he) + '</div><div class="co-small">אמרו את זה בגרמנית, בקול</div></div>';
-        else card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div>' + who + '<div class="co-small">מה אתם אומרים עכשיו? אמרו בקול</div></div>';
+      const maskBox = '<div class="co-de" style="opacity:.9;letter-spacing:.04em">' + esc(maskDe(it.de)) + '</div>';
+      let card, act = '';
+      if (it.mode === 'copy') {
+        card = '<div class="co-card">' + (it.prev ? '<div class="co-small">' + esc(it.cue) + '</div>' + who : '<div class="co-small">' + esc(it.cue) + '</div>') + '<div class="co-de" style="font-size:25px;color:var(--fun-blue-dk,#1899d6)">' + esc(it.de) + '</div><div class="co-small">' + esc(it.he) + '</div><div class="co-aux"><button id="rSay">🔊 שוב</button>' + (C.playLine ? '<button id="rRec">🎧 מההקלטה</button>' : '') + '</div><div class="co-small">הקשיבו, ואז אמרו את השורה בקול</div></div>';
+        act = '<button class="co-btn" id="rNext">אמרתי · הבאה ←</button>';
+      } else if (it.mode === 'hint' && phase === 'ask') {
+        card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div>' + who + '<div class="co-big">' + esc(it.he) + '</div>' + maskBox + '<div class="co-small">אמרו בגרמנית לפי האותיות הראשונות</div></div>';
+        act = '<button class="co-btn" id="rShow">הצג</button>';
+      } else if (phase === 'ask') {
+        if (it.mode === 'apply') card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div><div class="co-big">' + esc(it.he) + '</div>' + (hl >= 1 ? maskBox : '') + '<div class="co-small">אמרו את זה בגרמנית, בקול</div></div>';
+        else card = '<div class="co-card"><div class="co-small">' + esc(it.cue) + '</div>' + who + (hl >= 1 ? '<div class="co-big" style="font-size:20px">' + esc(it.he) + '</div>' : '') + (hl >= 2 ? maskBox : '') + '<div class="co-small">מה אתם אומרים עכשיו? אמרו בקול</div></div>';
+        act = '<button class="co-btn" id="rShow">הצג</button>' + (hl < L.length ? '<div class="co-aux" style="margin-top:10px"><button id="rHint">💡 רמז</button></div>' : '');
       } else {
         card = '<div class="co-card rev"><div class="co-de">' + esc(it.de) + '</div><div class="co-small">' + esc(it.he) + '</div><div class="co-aux"><button id="rSay">🔊 השמע</button>' + (C.playLine ? '<button id="rRec">🎧 מההקלטה</button>' : '') + '</div></div>';
+        act = it.mode === 'hint' ? '<button class="co-btn" id="rNext">המשך ←</button>' : '<div class="co-rate"><button class="r" data-s="0">לא ידעתי</button><button class="o" data-s="0.5">כמעט</button><button class="g" data-s="1">' + (hl > 0 ? 'ידעתי (עם רמז)' : 'ידעתי') + '</button></div>';
       }
-      const act = phase === 'ask' ? '<button class="co-btn" id="rShow">הצג</button>' : '<div class="co-rate"><button class="r" data-s="0">לא ידעתי</button><button class="o" data-s="0.5">כמעט</button><button class="g" data-s="1">ידעתי</button></div>';
-      root.innerHTML = '<div class="co-wrap"><div class="co-top"><button class="co-x" id="rX">✕</button><div class="co-bar"><i style="width:' + pct + '%"></i></div><span style="font-size:13px;color:var(--ink-soft);direction:ltr">' + i + '/' + q.length + '</span></div><div class="co-h" style="margin-top:12px">' + esc(o.title) + '</div>' + (i === 0 && phase === 'ask' && o.intro ? '<div class="co-msg" style="font-size:14px">' + esc(o.intro) + '</div>' : '') + card + act + '</div>';
-      root.querySelector('#rX').onclick = close;
-      if (phase === 'ask') root.querySelector('#rShow').onclick = () => { phase = 'rev'; draw(); if (C.speakDe) C.speakDe(q[i].de); };
-      else {
-        const sb = root.querySelector('#rSay'); if (sb) sb.onclick = () => C.speakDe(it.de);
-        const rb = root.querySelector('#rRec'); if (rb) rb.onclick = () => C.playLine(it.idx);
-        root.querySelectorAll('.co-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
-      }
+      root.innerHTML = '<div class="co-wrap"><div class="co-top"><button class="co-x" id="rX">✕</button><div class="co-bar"><i style="width:' + pct + '%"></i></div><span style="font-size:13px;color:var(--ink-soft);direction:ltr">' + i + '/' + q.length + '</span></div><div class="co-h" style="margin-top:12px">' + esc(o.title) + '</div>' + (it.stage ? '<div class="co-small" style="font-weight:800;color:var(--fun-blue-dk,#1899d6);margin-bottom:6px">' + esc(it.stage) + '</div>' : '') + (i === 0 && phase === 'ask' && o.intro ? '<div class="co-msg" style="font-size:14px">' + esc(o.intro) + '</div>' : '') + card + act + '</div>';
+      const $ = id => root.querySelector('#' + id);
+      $('rX').onclick = close;
+      if ($('rShow')) $('rShow').onclick = () => { phase = 'rev'; draw(); if (C.speakDe) C.speakDe(q[i].de); };
+      if ($('rHint')) $('rHint').onclick = () => { hl++; draw(); };
+      if ($('rNext')) $('rNext').onclick = () => { i++; phase = 'ask'; hl = 0; draw(); };
+      if ($('rSay')) $('rSay').onclick = () => C.speakDe(it.de);
+      if ($('rRec')) $('rRec').onclick = () => C.playLine(it.idx);
+      root.querySelectorAll('.co-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
+      if (it.mode === 'copy' && spokenAt !== i) { spokenAt = i; setTimeout(() => { if (root.isConnected && q[i] === it && C.speakDe) C.speakDe(it.de); }, 250); }
       root.scrollTop = 0;
     }
     function rate(score) {
       const it = q[i];
+      if (hl > 0 && score === 1) score = 0.5; // with a hint it counts as "almost"
       if (!it.again) results.push({ item: it, score: score });
       if (o.mark) { try { if (score === 1) C.setKnown(it.idx, true); else if (o.mark === true) C.setKnown(it.idx, false); } catch (e) {} }
-      if (score < 1 && o.mode === 'apply' && !it.again) q.push(Object.assign({}, it, { again: true }));
-      i++; phase = 'ask'; draw();
+      if (score < 1 && o.mode === 'apply' && !it.again) q.push(Object.assign({}, it, { again: true, stage: 'עוד סיבוב על מה שלא ישב' }));
+      i++; phase = 'ask'; hl = 0;
+      if (o.onPack && it.mode === 'apply' && !it.again) { const nx = q[i]; if (!nx || nx.again || nx.pack !== it.pack) { try { o.onPack(it.pack); } catch (e) {} } }
+      draw();
     }
     draw();
   }
