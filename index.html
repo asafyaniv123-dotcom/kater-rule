@@ -512,6 +512,18 @@
     padding: 6px 4px;
   }
   .kater-audio-bar audio { display: none; }
+  .kater-bar-toggle {
+    position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
+    min-width: 72px; height: 30px; padding: 0 14px; border-radius: 16px 16px 0 0;
+    border: 1px solid var(--line); border-bottom: 0; background: var(--surface); color: var(--accent);
+    font-size: 17px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 -3px 8px rgba(0,0,0,0.08);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .kater-bar-toggle:active { transform: translateX(-50%) translateY(2px); }
+  .kater-audio-bar.collapsed { padding: 0 0 env(safe-area-inset-bottom); border: 0; background: transparent; box-shadow: none; }
+  .kater-audio-bar.collapsed > *:not(.kater-bar-toggle) { display: none !important; }
+  html.kbar-closed #view-kater { padding-bottom: 80px; }
+  html.kbar-closed .kater-sync-follow-btn { bottom: 56px; }
   .kp { display: flex; flex-direction: column; gap: 6px; }
   .kp-seekrow { display: flex; align-items: center; gap: 10px; }
   .kp-time { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
@@ -3051,11 +3063,12 @@
     const barPad = () => { const bar = document.getElementById('katerAudioBar'); if (bar && bar.classList.contains('co-up')) root.style.paddingBottom = (bar.offsetHeight + 18) + 'px'; };
     const barUp = () => {
       const bar = document.getElementById('katerAudioBar'); if (!bar) return;
-      bar.style.display = ''; bar.classList.add('co-up'); barPad();
+      bar.style.display = ''; bar.classList.add('co-up'); try { window.katerBarSetClosed && katerBarSetClosed(false, false); } catch (e) {} barPad();
       if (!barRO && window.ResizeObserver) { barRO = new ResizeObserver(barPad); barRO.observe(bar); }
     };
     const barDown = () => {
       const bar = document.getElementById('katerAudioBar'); if (bar) bar.classList.remove('co-up');
+      try { window.katerBarSetClosed && katerBarSetClosed(window.katerBarPref ? katerBarPref() : false, false); } catch (e) {}
       if (barRO) { barRO.disconnect(); barRO = null; }
     };
     const stopRec = () => { if (recOn) { recOn = false; try { C.stopLine && C.stopLine(); } catch (e) {} } };
@@ -3381,6 +3394,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   <div class="view active" id="view-kater"></div>
 </div>
 <div class="kater-audio-bar" id="katerAudioBar" style="display:none;">
+  <button class="kater-bar-toggle" id="katerBarToggle" onclick="toggleKaterBar()" aria-label="סגירה או פתיחה של סרגל ההקלטה">⌄</button>
   <div class="kater-audio-bar-row">
     <button class="nav-btn kater-audio-part-btn" id="katerAudioPartBtn1" onclick="setKaterAudioPart('1')">🎧 חלק 1</button>
     <button class="nav-btn kater-audio-part-btn" id="katerAudioPartBtn2" onclick="setKaterAudioPart('2')">🎧 חלק 2</button>
@@ -4367,6 +4381,20 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   let katerWavePxs = parseFloat(safeGet('delearn_kater_wave_pxs', '25')) || 25;
 
   let katerPinEdit = false;
+
+  // the recording bar at the bottom can be folded away and brought back with the arrow tab above it
+  let katerBarClosedPref = safeGet('delearn_kater_bar_closed', '0') === '1';
+  function katerBarSetClosed(closed, persist) {
+    const bar = document.getElementById('katerAudioBar'), t = document.getElementById('katerBarToggle');
+    if (persist) { katerBarClosedPref = !!closed; safeSet('delearn_kater_bar_closed', closed ? '1' : '0'); }
+    if (bar) bar.classList.toggle('collapsed', !!closed);
+    document.documentElement.classList.toggle('kbar-closed', !!closed);
+    if (t) { t.textContent = closed ? '🎧 ⌃' : '⌄'; t.setAttribute('aria-expanded', closed ? 'false' : 'true'); }
+    if (!closed) setTimeout(() => { try { katerUpdatePlayerUi(); katerWaveDraw(); } catch (e) {} }, 0);
+  }
+  function katerBarPref() { return katerBarClosedPref; }
+  function toggleKaterBar() { katerBarSetClosed(!katerBarClosedPref, true); }
+  katerBarSetClosed(katerBarClosedPref, false);
 
   function katerPinsLoad(key) { try { return JSON.parse(safeGet(key, '{}')) || {}; } catch (e) { return {}; } }
 
