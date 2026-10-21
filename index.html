@@ -2709,6 +2709,7 @@
   const CSS = `
   .co-ov { position: fixed; inset: 0; z-index: 8000; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
   .co-wrap { max-width: 560px; margin: 0 auto; }
+  .kater-audio-bar.co-up { z-index: 8100 !important; }
   .co-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .co-top h2 { margin: 0; font-size: 24px; font-weight: 800; color: var(--fun-green, #58a700); }
   .co-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
@@ -3025,14 +3026,27 @@
     const C = $ctx();
     const q = o.items.slice(); let i = 0, results = [], phase = 'ask', hl = 0, spokenAt = -1, recOn = false;
     const root = document.createElement('div'); root.className = 'co-ov'; document.body.appendChild(root);
+    // while the recording is used the player bar (waveform, pins, seek) is lifted above the card so the learner can move around the recording
+    let barRO = null;
+    const barPad = () => { const bar = document.getElementById('katerAudioBar'); if (bar && bar.classList.contains('co-up')) root.style.paddingBottom = (bar.offsetHeight + 18) + 'px'; };
+    const barUp = () => {
+      const bar = document.getElementById('katerAudioBar'); if (!bar) return;
+      bar.style.display = ''; bar.classList.add('co-up'); barPad();
+      if (!barRO && window.ResizeObserver) { barRO = new ResizeObserver(barPad); barRO.observe(bar); }
+    };
+    const barDown = () => {
+      const bar = document.getElementById('katerAudioBar'); if (bar) bar.classList.remove('co-up');
+      if (barRO) { barRO.disconnect(); barRO = null; }
+    };
     const stopRec = () => { if (recOn) { recOn = false; try { C.stopLine && C.stopLine(); } catch (e) {} } };
-    const finishNow = () => { stopRec(); root.remove(); if (o.onFinish) o.onFinish(summary()); };
+    const finishNow = () => { stopRec(); barDown(); root.remove(); if (o.onFinish) o.onFinish(summary()); };
     function summary() { const n = results.length || 1, s = results.reduce((a, r) => a + r.score, 0); return { results: results, ratio: results.length ? s / n : 1 }; }
-    function close() { stopRec(); root.remove(); if (o.onClose) o.onClose(); }
+    function close() { stopRec(); barDown(); root.remove(); if (o.onClose) o.onClose(); }
     const ladder = it => it.mode === 'apply' ? ['mask'] : ['he', 'mask'];
     function draw() {
       stopRec();
       if (i >= q.length) {
+        barDown();
         if (!results.length) return finishNow();
         const sum = summary(), miss = results.filter(r => r.score < 1);
         root.innerHTML = '<div class="co-wrap"><div class="co-top"><h2>' + esc(o.title) + '</h2><button class="co-x" id="rX">✕</button></div><div class="co-score">' + Math.round(sum.ratio * 100) + '%</div><div class="co-msg" style="text-align:center">' + (sum.ratio >= .8 ? 'מצוין!' : sum.ratio >= .5 ? 'בכיוון, חוזרים על מה שלא ישב.' : 'זה בסדר גמור. עכשיו אנחנו יודעים מה לחזק, וחוזרים לזה.') + '</div>' + (miss.length ? '<div class="co-h">מה עוד לא ישב</div><div class="co-miss">' + miss.slice(0, 40).map(r => '<div>' + esc(r.item.de) + '</div>').join('') + '</div>' : '') + '<div style="margin-top:14px"><button class="co-go" id="rDone">המשך</button></div></div>';
@@ -3067,7 +3081,7 @@
       if ($('rRec')) $('rRec').onclick = () => {
         const b = $('rRec');
         if (recOn) { stopRec(); b.textContent = '🎧 מההקלטה'; return; }
-        recOn = true; b.textContent = '⏹ עצור';
+        recOn = true; b.textContent = '⏹ עצור'; barUp();
         C.playLine(it.idx, () => { if (recOn && q[i] === it) { recOn = false; const bb = root.isConnected && root.querySelector('#rRec'); if (bb) bb.textContent = '🎧 מההקלטה'; } });
       };
       root.querySelectorAll('.co-rate button').forEach(b => { b.onclick = () => rate(+b.dataset.s); });
@@ -6151,7 +6165,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         const arr = KATER_SYNC[line.part] || [];
         const j = arr.findIndex(e => e.k === i);
         const to = Math.min(from + 25, j >= 0 && arr[j + 1] ? arr[j + 1].t + 0.15 : from + 12);
-        let armed = false, waited = 0, done = false;
+        let armed = false, waited = 0, done = false, last = null;
         const tm = setInterval(() => {
           const el = katerAudioEl();
           if (!el || done) return;
@@ -6160,7 +6174,9 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
             else if (++waited > 120) stop(false);
             return;
           }
-          if (el.paused || el.currentTime >= to || el.currentTime < from - 1) stop(true);
+          if (last !== null && Math.abs(el.currentTime - last) > 1.2) { stop(false); return; } // the learner moved the recording himself: let go and leave playback to him
+          last = el.currentTime;
+          if (el.paused || el.currentTime >= to) stop(true);
         }, 120);
         function stop(pause) {
           if (done) return; done = true; clearInterval(tm); window.__coachRecStop = null;
