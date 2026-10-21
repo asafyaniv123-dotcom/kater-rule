@@ -4348,6 +4348,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
   let katerPinsMoved = katerPinsLoad('delearn_kater_pins_moved');
 
+  let katerSyncVer = 0;
   let katerPinMove = false, katerPinSel = null, katerPinTemp = null, katerPinDrag = null;
 
   function katerPinsSave() {
@@ -4361,33 +4362,23 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const arr = KATER_SYNC[part]; if (!arr || !arr[i]) return;
     const e = arr[i];
     if (e.t0 === undefined) e.t0 = e.t;
-    e.t = t;
+    e.t = t; katerSyncVer++;
     if (e.k >= 0 && part === (KATER_LINES[e.k] || {}).part) KATER_AUDIO_T[e.k] = t;
   }
   function katerPinRestoreEntry(part, i) {
     const e = (KATER_SYNC[part] || [])[i];
     if (!e || e.t0 === undefined) return;
-    e.t = e.t0; delete e.t0; delete e.pushed;
+    e.t = e.t0; delete e.t0; katerSyncVer++;
     if (e.k >= 0 && KATER_AUDIO_T0[e.k] !== undefined) KATER_AUDIO_T[e.k] = KATER_AUDIO_T0[e.k];
-    if (katerPinsMoved[part]) { delete katerPinsMoved[part][i]; delete katerPinsMoved[part]['p' + i]; }
+    if (katerPinsMoved[part]) delete katerPinsMoved[part][i];
   }
-  // keep the entries in time order: a moved pin pushes its neighbours along instead of being stopped by them
-  function katerPinOrder(part, i) {
-    const arr = KATER_SYNC[part] || [], GAP = 0.05, mv = katerPinsMoved[part] = katerPinsMoved[part] || {};
-    for (let j = i - 1; j >= 0; j--) {
-      if (arr[j].t <= arr[j + 1].t - GAP) break;
-      katerPinSetTime(part, j, Math.max(0, arr[j + 1].t - GAP)); arr[j].pushed = true; mv['p' + j] = arr[j].t;
-    }
-    for (let j = i + 1; j < arr.length; j++) {
-      if (arr[j].t >= arr[j - 1].t + GAP) break;
-      katerPinSetTime(part, j, arr[j - 1].t + GAP); arr[j].pushed = true; mv['p' + j] = arr[j].t;
-    }
-  }
+
   const KATER_AUDIO_T0 = Object.assign({}, KATER_AUDIO_T);
   Object.keys(katerPinsMoved).forEach(part => Object.keys(katerPinsMoved[part] || {}).forEach(key => {
     const arr = KATER_SYNC[part]; const t = katerPinsMoved[part][key];
-    const pushed = key.charAt(0) === 'p', i = +(pushed ? key.slice(1) : key);
-    if (arr && arr[i] && typeof t === 'number') { katerPinSetTime(part, i, t); if (pushed) arr[i].pushed = true; }
+    if (key.charAt(0) === 'p') { delete katerPinsMoved[part][key]; return; } // an earlier version pushed neighbouring entries; a moved pin now never touches the others
+    const i = +key;
+    if (arr && arr[i] && typeof t === 'number') katerPinSetTime(part, i, t);
   }));
 
   function katerWaveArr(part) {
@@ -4412,7 +4403,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const arr = KATER_SYNC[part] || [];
     const hid = new Set(katerPinsHidden[part] || []);
     const out = [];
-    arr.forEach((l, i) => { if (l.k >= 0 && !hid.has(i)) out.push({ kind: 'auto', i, t: l.t, from: arr[Math.max(0, i - KATER_PIN_BACK)].t, moved: l.t0 !== undefined }); });
+    arr.forEach((l, i) => { if (l.k >= 0 && !hid.has(i)) out.push({ kind: 'auto', i, t: l.t, from: katerPinFrom(arr, i), moved: l.t0 !== undefined }); });
     (katerPinsCustom[part] || []).forEach(t => out.push({ kind: 'custom', t, from: t }));
     if (katerPinDrag && katerPinTemp !== null) out.forEach(pn => { if (katerPinIsSel(pn)) pn.t = katerPinTemp; });
     out.sort((a, b) => a.t - b.t);
@@ -4460,7 +4451,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const hint = document.getElementById('katerMoveHint'), go = document.getElementById('katerMoveHere'), orig = document.getElementById('katerMoveOrig');
     const sel = katerPinSel;
     if (hint) hint.textContent = sel
-      ? 'הסיכה נבחרה (כתומה). גררו אותה על הסרגל, או הזיזו את הסרגל והקישו "הנח כאן". הסיכות שבדרך זזות איתה.'
+      ? 'הסיכה נבחרה (כתומה). גררו אותה על הסרגל, או הזיזו את הסרגל והקישו "הנח כאן". רק הסיכה הזאת זזה, שאר הסיכות נשארות.'
       : 'הקישו על סיכה כדי לבחור אותה, ואז העבירו אותה למקום הנכון.';
     if (go) go.disabled = !sel;
     if (orig) {
@@ -4483,12 +4474,9 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     if (sel.kind === 'auto') {
       const arr = KATER_SYNC[part] || [];
       const dur = katerAudioDuration() || 1e9;
-      t = Math.min(Math.max(t, 0.05 * (sel.i + 1)), dur - 0.05 * (arr.length - sel.i));
+      t = Math.min(Math.max(t, 0), Math.max(0, dur - 0.05));
       katerPinSetTime(part, sel.i, t);
-      arr[sel.i].pushed = false;
-      const mv = katerPinsMoved[part] = katerPinsMoved[part] || {};
-      mv[sel.i] = t; delete mv['p' + sel.i];
-      katerPinOrder(part, sel.i);
+      (katerPinsMoved[part] = katerPinsMoved[part] || {})[sel.i] = t; // only this one pin changes; no other entry is touched
     } else {
       const a = katerPinsCustom[part] = katerPinsCustom[part] || [];
       const k = a.findIndex(x => Math.abs(x - sel.t) < 1e-6);
@@ -4510,11 +4498,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerPinRestoreSel() {
     const sel = katerPinSel; if (!sel || sel.kind !== 'auto') return;
     const part = katerAudioPart;
-    const arr = KATER_SYNC[part] || [];
     katerPinRestoreEntry(part, sel.i);
-    for (let j = sel.i - 1; j >= 0 && arr[j].pushed; j--) katerPinRestoreEntry(part, j);
-    for (let j = sel.i + 1; j < arr.length && arr[j].pushed; j++) katerPinRestoreEntry(part, j);
-    katerPinOrder(part, sel.i);
     katerPinsSave(); katerPinMoveUi();
     if (katerIsSyncView()) { try { renderKater(); } catch (e) {} }
     updateKaterSyncHighlight(true);
@@ -5134,13 +5118,26 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
   const KATER_SYNC_LEAD = 0.3;
 
+  const katerSyncSortCache = new WeakMap();
+  // the entry that is playing at time t. A pin the learner moved may sit out of the original order, so search by time, not by position
   function katerSyncIndexAt(arr, t) {
-    let lo = 0, hi = arr.length - 1, ans = -1;
+    let c = katerSyncSortCache.get(arr);
+    if (!c || c.v !== katerSyncVer) {
+      const idx = arr.map((_, i) => i).sort((a, b) => (arr[a].t - arr[b].t) || (a - b));
+      c = { v: katerSyncVer, idx }; katerSyncSortCache.set(arr, c);
+    }
+    const idx = c.idx;
+    let lo = 0, hi = idx.length - 1, ans = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (arr[mid].t - KATER_SYNC_LEAD <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+      if (arr[idx[mid]].t - KATER_SYNC_LEAD <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1;
     }
-    return ans;
+    return ans < 0 ? -1 : idx[ans];
+  }
+  // where playback starts for a pin: the previous entry (for context), unless the pin was moved to before it
+  function katerPinFrom(arr, i) {
+    const p = arr[Math.max(0, i - KATER_PIN_BACK)].t, t = arr[i].t;
+    return p <= t ? p : Math.max(0, t - 1.5);
   }
 
   function updateKaterSyncFollowBtn() {
@@ -5290,10 +5287,9 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     if (ev && ev.stopPropagation) ev.stopPropagation();
     const arr = KATER_SYNC[katerAudioPart];
     if (!arr || !arr[i]) return;
-    const from = Math.max(0, i - KATER_PIN_BACK);
     katerSyncFollow = true;
     updateKaterSyncFollowBtn();
-    seekAndPlayKater(katerAudioPart, arr[from].t);
+    seekAndPlayKater(katerAudioPart, katerPinFrom(arr, i));
     updateKaterSyncHighlight(true);
   }
 
@@ -6183,7 +6179,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         if (!line || from === undefined) { onEnd && onEnd(); return; }
         const arr = KATER_SYNC[line.part] || [];
         const j = arr.findIndex(e => e.k === i);
-        const to = Math.min(from + 25, j >= 0 && arr[j + 1] ? arr[j + 1].t + 0.15 : from + 12);
+        const to = Math.min(from + 25, j >= 0 && arr[j + 1] && arr[j + 1].t > from + 1 ? arr[j + 1].t + 0.15 : from + 12);
         let armed = false, waited = 0, done = false, last = null;
         const tm = setInterval(() => {
           const el = katerAudioEl();
