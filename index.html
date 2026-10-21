@@ -3955,8 +3955,15 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   ];
 
   // stage directions: text in parentheses and notes about what the actor physically does are not part of what is tested
-  function katerStrip(s) { return String(s || '').replace(/\([^)]*\)?/g, ' ').replace(/\s+/g, ' ').replace(/^[\s:.…,\-–]+/, '').trim(); }
-  function katerStageOnly(l) { return !l || /^\s*\([^()]*\)\s*$/.test(l.he || '') || !katerStrip(l.de); }
+  function katerStrip(s) { return String(s || '').replace(/\([^)]*\)?/g, ' ').replace(/\s+/g, ' ').replace(/^[\s:.…,\-–]+/, '').replace(/^(schnurrt|knurrt|faucht|heult|zischelt|ruft energisch)\b[\s.:,]*/i, '').trim(); }
+  function katerStageOnly(l) {
+    if (!l || /^\s*\([^()]*\)\s*$/.test(l.he || '')) return true;
+    const d = katerStrip(l.de);
+    if (!d) return true;
+    // a line that is only a continuation of a stage direction, e.g. "(faucht) und entkommt" - lowercase, short, no sentence punctuation
+    if (/^[a-zäöü]/.test(d) && d.split(/\s+/).length <= 3 && !/[?!]/.test(d) && /\(/.test(l.de || '')) return true;
+    return false;
+  }
   function katerInDirOnly(v) {
     const l = KATER_LINES[v.lineIndex]; if (!l) return false;
     if (katerStageOnly(l)) return true;
