@@ -652,6 +652,26 @@
     cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent;
   }
   .sync-pin:active { transform: scale(0.92); }
+  .kater-star { background: none; border: 0; padding: 4px 6px; font-size: 21px; line-height: 1; cursor: pointer; opacity: .5; -webkit-tap-highlight-color: transparent; flex: 0 0 auto; }
+  .kater-star.on { opacity: 1; }
+  .kater-star:active { transform: scale(0.85); }
+  .sync-star { position: absolute; inset-inline-end: 8px; top: 8px; }
+  .sync-pinned .sync-star { top: 54px; }
+  .sync-line.sync-mine:not(.sync-pinned) { padding-inline-end: 46px; }
+  .sync-line.sync-pinned { min-height: 104px; }
+  .kater-flat-card, .kater-practice-card { position: relative; }
+  .card-star { position: absolute; top: 6px; inset-inline-start: 6px; }
+  .kstar-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; }
+  .kstar-bar .nav-btn { flex: 1 1 auto; }
+  .kstar-go { background: var(--accent) !important; color: var(--surface) !important; font-weight: 700; }
+  .kstar-line { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .kstar-line .kater-de { overflow-wrap: anywhere; }
+  .kstar-hide .kater-de, .kstar-hide .kater-he { filter: blur(7px); transition: filter .2s; cursor: pointer; }
+  .kstar-hide .kstar-line.rev .kater-de, .kstar-hide .kstar-line.rev .kater-he { filter: none; }
+  .kstar-acts { display: flex; gap: 6px; align-items: center; }
+  .kstar-banner { background: #fff8e1; border: 1px solid #f9a825; color: #5d4037; border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-size: 14px; text-align: center; }
+  .kstar-banner .nav-btn { margin: 6px 4px 0; }
+  .kstar-empty { text-align: center; color: var(--ink-soft); padding: 28px 14px; line-height: 1.7; }
   .scenes-nav { display: flex; gap: 6px; align-items: center; margin: 6px 0 4px; }
   .scenes-nav .kater-scene-select { flex: 1; min-width: 0; }
   .scenes-nav .nav-btn { flex: 0 0 auto; padding-inline: 10px; }
@@ -3117,7 +3137,15 @@
     injectCss(); refreshBanner();
     if (ST.lastOpen !== today()) setTimeout(() => { if (!overlay) home(); }, 700); // first time today: open the coach by itself
   }
-  window.KaterCoach = { open: () => home(), init: init, refreshBanner: refreshBanner, _state: () => ST, _reload: () => { ST = load(); SCENES = null; }, _gen: generate, _mode: modeNow, _scenes: scenes, _cloze: clozeItems, _recite: recite, _linesItems: linesItems };
+  // practice any set of lines from memory (used by the starred-lines screen): cue + Hebrew -> say it, with the hint ladder
+  function practiceLines(idxs, o) {
+    o = o || {};
+    SPCSS();
+    const items = linesItems(idxs, 'apply').map(it => Object.assign({}, it, { mode: 'apply', stage: o.stage || '' }));
+    if (!items.length) return;
+    recite({ title: o.title || 'תרגול שורות', items: items, mode: 'apply', mark: false, intro: o.intro, onFinish: o.onFinish, onClose: o.onClose });
+  }
+  window.KaterCoach = { practiceLines: practiceLines, open: () => home(), init: init, refreshBanner: refreshBanner, _state: () => ST, _reload: () => { ST = load(); SCENES = null; }, _gen: generate, _mode: modeNow, _scenes: scenes, _cloze: clozeItems, _recite: recite, _linesItems: linesItems };
 })();
 
 </script>
@@ -5328,7 +5356,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       const pin = mine ? `<button class="sync-pin" onclick="katerPinPlay(${i}, event)" aria-label="נגן מהמשפט שלפני המשפט של החתול">📍</button>` : '';
       lines += `
         <div class="sync-line${mine ? ' sync-mine sync-pinned' : ''}" id="sync-line-${i}" onclick="${katerKaraoke && mine ? 'katerKaraokePeek(this)' : 'seekKaterSyncLine(' + i + ')'}">
-          ${pin}
+          ${pin}${mine ? katerStarBtn(l.k, 'sync-star') : ''}
           <div class="sync-sp">${mine ? '🐱 ' : ''}${escapeHtml(l.s)}${l.p ? ' · עמ’ ' + l.p : ''}</div>
           <div class="sync-de">${escapeHtml(l.d)}</div>
           ${he}
@@ -5371,6 +5399,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       const he = (katerSyncShowHe && heText) ? `<div class="sync-he${mine ? '' : ' sync-he-other'}">${escapeHtml(heText)}</div>` : '';
       return scene + `
         <div class="sync-line${mine ? ' sync-mine' : ''}" id="sync-line-${i}" onclick="${katerKaraoke && mine ? 'katerKaraokePeek(this)' : 'seekKaterSyncLine(' + i + ')'}">
+          ${mine ? katerStarBtn(l.k, 'sync-star') : ''}
           <div class="sync-sp">${mine ? '🐱 ' : ''}${escapeHtml(l.s)}${l.p ? ' · עמ’ ' + l.p : ''}</div>
           <div class="sync-de">${escapeHtml(l.d)}</div>
           ${he}
@@ -5397,6 +5426,30 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const set = new Set(getKaterKnown());
     if (known) set.add(idx); else set.delete(idx);
     safeSet('delearn_kater_known', JSON.stringify([...set]));
+  }
+
+  // ---- starred lines: lines the learner marked as needing more review ----
+  let katerStars = (function () { try { const a = JSON.parse(safeGet('delearn_kater_stars', '[]')); return new Set(Array.isArray(a) ? a.filter(n => Number.isInteger(n) && KATER_LINES[n] && !katerStageOnly(KATER_LINES[n])) : []); } catch (e) { return new Set(); } })();
+  let katerStarsHide = safeGet('delearn_kater_stars_hide', '0') === '1';
+  let katerStarsLast = null;
+  function katerStarsSave() { safeSet('delearn_kater_stars', JSON.stringify([...katerStars].sort((a, b) => a - b))); }
+  function katerStarBtn(i, cls) {
+    if (i === undefined || i < 0 || !KATER_LINES[i] || katerStageOnly(KATER_LINES[i])) return ''; // stage directions are not spoken text, so there is nothing to practice
+    const on = katerStars.has(i);
+    return `<button class="kater-star${on ? ' on' : ''}${cls ? ' ' + cls : ''}" data-star="${i}" onclick="toggleKaterStar(${i}, event)" aria-label="${on ? 'הסרת הכוכב מהשורה' : 'סימון השורה בכוכב לתרגול נוסף'}" aria-pressed="${on}">${on ? '⭐' : '☆'}</button>`;
+  }
+  function katerStarUi() {
+    document.querySelectorAll('[data-star]').forEach(b => {
+      const i = +b.dataset.star, on = katerStars.has(i);
+      b.classList.toggle('on', on); b.textContent = on ? '⭐' : '☆'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    const m = document.getElementById('katerStarsModeBtn'); if (m) m.textContent = '⭐ מסומנות' + (katerStars.size ? ' · ' + katerStars.size : '');
+    const c = document.getElementById('katerStarsCount'); if (c) c.textContent = katerStars.size ? katerCountLabel(katerStars.size) + ' מסומנים' : 'אין שורות מסומנות';
+  }
+  function toggleKaterStar(i, ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    if (katerStars.has(i)) katerStars.delete(i); else katerStars.add(i);
+    katerStarsSave(); katerStarUi();
   }
 
   let katerScene = safeGet('delearn_kater_scene', 'all');
@@ -5905,6 +5958,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     return orderRow + `
       <div class="flashcard-counter">${katerIndex + 1} / ${katerQueue.length} · ידועים בסבב הזה: ${knownCount}</div>
       <div class="kater-flat-card" id="katerCard" onclick="revealKaterCard()">
+        ${katerStarBtn(idx, 'card-star')}
         <div class="flashcard-category">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}${line.page ? ' · עמ׳ ' + escapeHtml(String(line.page)) : ''}</div>
         <div class="kater-cue">${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
         ${katerRevealed ? `
@@ -5941,6 +5995,71 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       </div>`;
   }
 
+  function renderKaterStarsBody() {
+    const idxs = [...katerStars].sort((a, b) => a - b).filter(i => KATER_LINES[i] && !katerStageOnly(KATER_LINES[i]));
+    const head = `<div class="kater-scene-summary"><b id="katerStarsCount">${idxs.length ? katerCountLabel(idxs.length) + ' מסומנים' : 'אין שורות מסומנות'}</b> · השורות שסימנתם בכוכב ⭐ כי צריך לעבור עליהן שוב ושוב</div>`;
+    if (!idxs.length) {
+      return head + `<div class="kstar-empty">עוד לא סימנתם שום שורה.<br>בכל מסך של השורות של החתול (האזנה, סצנות, קריאה, כרטיסיות, שינון) יש כוכב ☆ ליד השורה. הקישו עליו, והשורה תופיע כאן, ותוכלו להתאמן עליה.</div>`;
+    }
+    let banner = '';
+    if (katerStarsLast && katerStarsLast.known.length) {
+      banner = `<div class="kstar-banner">ידעתם בלי רמז <b>${katerStarsLast.known.length}</b> ${katerStarsLast.known.length === 1 ? 'שורה' : 'שורות'}. להוריד מהן את הכוכב?<br>
+        <button class="nav-btn" onclick="katerStarsDropKnown()">כן, הורידו</button><button class="nav-btn" onclick="katerStarsLast = null; renderKater()">להשאיר הכול</button></div>`;
+    }
+    const bar = `
+      <div class="kstar-bar">
+        ${window.KaterCoach && KaterCoach.practiceLines ? `<button class="nav-btn kstar-go" onclick="katerStarsPractice()">🎯 תרגול מהזיכרון (${idxs.length})</button>` : ''}
+        <button class="nav-btn${katerStarsHide ? ' active-toggle' : ''}" onclick="katerStarsToggleHide()">🙈 הסתר גרמנית</button>
+      </div>`;
+    let html = '', last = null;
+    idxs.forEach(i => {
+      const line = KATER_LINES[i], key = line.part + '|' + line.scene;
+      if (key !== last) {
+        const t = tagIndexFor(line.scene);
+        html += `<div class="category"><span class="category-title" style="background:var(--tag-${t + 1}-bg); color:var(--tag-${t + 1});">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}</span></div>`;
+        last = key;
+      }
+      const speakId = `kater-star-speak-${i}`;
+      html += `
+        <div class="kstar-line" id="kstar-${i}" onclick="this.classList.toggle('rev')">
+          <div class="kater-cue">${line.page ? 'עמ\' ' + escapeHtml(String(line.page)) + ' · ' : ''}${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
+          <div class="kater-de-row">
+            <div class="kater-de">${escapeHtml(katerStrip(line.de))}</div>
+            <div class="kstar-acts">
+              <button class="play-btn play-btn-sm" id="${speakId}" onclick="event.stopPropagation(); speak('${escapeJs(katerStrip(line.de))}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
+              ${KATER_AUDIO_T[i] !== undefined ? `<button class="play-btn play-btn-sm" onclick="event.stopPropagation(); playKaterLineAudio(${i})" aria-label="נגן מההקלטה">🎧</button>` : ''}
+              ${katerStarBtn(i)}
+            </div>
+          </div>
+          <div class="kater-he">${escapeHtml(katerStrip(line.he) || line.he)}</div>
+        </div>`;
+    });
+    return head + banner + bar + `<div class="${katerStarsHide ? 'kstar-hide' : ''}" id="kstarList">${html}</div>`;
+  }
+
+  function katerStarsToggleHide() {
+    katerStarsHide = !katerStarsHide;
+    safeSet('delearn_kater_stars_hide', katerStarsHide ? '1' : '0');
+    renderKater();
+  }
+
+  function katerStarsPractice() {
+    const idxs = shuffleArray([...katerStars].filter(i => KATER_LINES[i] && !katerStageOnly(KATER_LINES[i])));
+    if (!idxs.length || !window.KaterCoach || !KaterCoach.practiceLines) return;
+    KaterCoach.practiceLines(idxs, {
+      title: '⭐ השורות המסומנות',
+      stage: 'מהזיכרון: אומרים בקול, ואפשר לבקש רמז',
+      intro: 'מופיע הרמז בעברית. אמרו את השורה בגרמנית בקול, ואז הקישו "הצג". שורה שלא ישבה חוזרת בסוף.',
+      onFinish: sum => { katerStarsLast = { known: (sum.results || []).filter(r => r.score === 1).map(r => r.item.idx) }; renderKater(); },
+      onClose: () => renderKater()
+    });
+  }
+
+  function katerStarsDropKnown() {
+    if (katerStarsLast) katerStarsLast.known.forEach(i => katerStars.delete(i));
+    katerStarsLast = null; katerStarsSave(); renderKater();
+  }
+
   function renderKater() {
     const el = document.getElementById('view-kater');
     if (!el) return;
@@ -5951,6 +6070,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         <div class="kseg">${mb('sync', '🎵 האזנה')}${mb('scenes', '🎬 סצנות')}${mb('browse', '📖 קריאה')}</div>
         <div class="kmodes-cap">תרגול</div>
         <div class="kseg">${mb('cards', 'כרטיסיות')}${mb('quiz', 'חידון')}${mb('practice', 'שינון')}${mb('vocab', 'מילים')}</div>
+        <div class="kseg"><button id="katerStarsModeBtn" class="${katerViewMode === 'stars' ? 'on' : ''}" onclick="setKaterViewMode('stars')">⭐ מסומנות${katerStars.size ? ' · ' + katerStars.size : ''}</button></div>
       </div>`;
     const partRow = katerPartRowHtml();
     updateKaterSyncFollowBtn();
@@ -5969,6 +6089,11 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         updateKaterSyncHighlight(true);
         if (!katerSyncActiveIdx || katerSyncActiveIdx < 0) window.scrollTo({ top: 0 });
       }, 0);
+      return;
+    }
+
+    if (katerViewMode === 'stars') {
+      el.innerHTML = modeRow + renderKaterStarsBody();
       return;
     }
 
@@ -6007,6 +6132,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       if (!katerRevealed) {
         body = `
           <div class="check-card kater-practice-card">
+            ${katerStarBtn(idx, 'card-star')}
             <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
             <div class="kater-practice-cue">נסו לומר את המשפט של החתול בעל פה, ואז הקישו להצגה</div>
             <button class="kater-reveal-btn" onclick="revealKaterLine()">הראה את המשפט</button>
@@ -6014,6 +6140,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       } else {
         body = `
           <div class="check-card kater-practice-card">
+            ${katerStarBtn(idx, 'card-star')}
             <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
             <div class="kater-de-row">
               <div class="kater-de">${escapeHtml(katerStrip(line.de))}</div>
@@ -6057,6 +6184,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
           <div class="kater-de-row">
             <div class="kater-de">${escapeHtml(line.de)}</div>
             <button class="play-btn play-btn-sm" id="${speakId}" onclick="speak('${escapeJs(line.de)}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
+            ${katerStarBtn(i)}
           </div>
           <div class="kater-he">${escapeHtml(line.he)}</div>
           ${katerAudioRowHtml(line, i)}
