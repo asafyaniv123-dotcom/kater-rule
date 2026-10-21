@@ -4367,13 +4367,27 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerPinRestoreEntry(part, i) {
     const e = (KATER_SYNC[part] || [])[i];
     if (!e || e.t0 === undefined) return;
-    e.t = e.t0; delete e.t0;
+    e.t = e.t0; delete e.t0; delete e.pushed;
     if (e.k >= 0 && KATER_AUDIO_T0[e.k] !== undefined) KATER_AUDIO_T[e.k] = KATER_AUDIO_T0[e.k];
+    if (katerPinsMoved[part]) { delete katerPinsMoved[part][i]; delete katerPinsMoved[part]['p' + i]; }
+  }
+  // keep the entries in time order: a moved pin pushes its neighbours along instead of being stopped by them
+  function katerPinOrder(part, i) {
+    const arr = KATER_SYNC[part] || [], GAP = 0.05, mv = katerPinsMoved[part] = katerPinsMoved[part] || {};
+    for (let j = i - 1; j >= 0; j--) {
+      if (arr[j].t <= arr[j + 1].t - GAP) break;
+      katerPinSetTime(part, j, Math.max(0, arr[j + 1].t - GAP)); arr[j].pushed = true; mv['p' + j] = arr[j].t;
+    }
+    for (let j = i + 1; j < arr.length; j++) {
+      if (arr[j].t >= arr[j - 1].t + GAP) break;
+      katerPinSetTime(part, j, arr[j - 1].t + GAP); arr[j].pushed = true; mv['p' + j] = arr[j].t;
+    }
   }
   const KATER_AUDIO_T0 = Object.assign({}, KATER_AUDIO_T);
-  Object.keys(katerPinsMoved).forEach(part => Object.keys(katerPinsMoved[part] || {}).forEach(i => {
-    const arr = KATER_SYNC[part]; const t = katerPinsMoved[part][i];
-    if (arr && arr[i] && typeof t === 'number') katerPinSetTime(part, +i, t);
+  Object.keys(katerPinsMoved).forEach(part => Object.keys(katerPinsMoved[part] || {}).forEach(key => {
+    const arr = KATER_SYNC[part]; const t = katerPinsMoved[part][key];
+    const pushed = key.charAt(0) === 'p', i = +(pushed ? key.slice(1) : key);
+    if (arr && arr[i] && typeof t === 'number') { katerPinSetTime(part, i, t); if (pushed) arr[i].pushed = true; }
   }));
 
   function katerWaveArr(part) {
@@ -4446,7 +4460,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const hint = document.getElementById('katerMoveHint'), go = document.getElementById('katerMoveHere'), orig = document.getElementById('katerMoveOrig');
     const sel = katerPinSel;
     if (hint) hint.textContent = sel
-      ? 'הסיכה נבחרה (כתומה). גררו אותה על הסרגל, או הזיזו את הסרגל והקישו "הנח כאן".'
+      ? 'הסיכה נבחרה (כתומה). גררו אותה על הסרגל, או הזיזו את הסרגל והקישו "הנח כאן". הסיכות שבדרך זזות איתה.'
       : 'הקישו על סיכה כדי לבחור אותה, ואז העבירו אותה למקום הנכון.';
     if (go) go.disabled = !sel;
     if (orig) {
@@ -4468,11 +4482,13 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     t = Math.round(t * 20) / 20;
     if (sel.kind === 'auto') {
       const arr = KATER_SYNC[part] || [];
-      const prev = arr[sel.i - 1], next = arr[sel.i + 1];
-      const lo = (prev ? prev.t : 0) + 0.05, hi = (next ? next.t : (katerAudioDuration() || 1e9)) - 0.05;
-      t = Math.min(Math.max(t, lo), Math.max(lo, hi));
+      const dur = katerAudioDuration() || 1e9;
+      t = Math.min(Math.max(t, 0.05 * (sel.i + 1)), dur - 0.05 * (arr.length - sel.i));
       katerPinSetTime(part, sel.i, t);
-      (katerPinsMoved[part] = katerPinsMoved[part] || {})[sel.i] = t;
+      arr[sel.i].pushed = false;
+      const mv = katerPinsMoved[part] = katerPinsMoved[part] || {};
+      mv[sel.i] = t; delete mv['p' + sel.i];
+      katerPinOrder(part, sel.i);
     } else {
       const a = katerPinsCustom[part] = katerPinsCustom[part] || [];
       const k = a.findIndex(x => Math.abs(x - sel.t) < 1e-6);
@@ -4494,8 +4510,11 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerPinRestoreSel() {
     const sel = katerPinSel; if (!sel || sel.kind !== 'auto') return;
     const part = katerAudioPart;
+    const arr = KATER_SYNC[part] || [];
     katerPinRestoreEntry(part, sel.i);
-    if (katerPinsMoved[part]) delete katerPinsMoved[part][sel.i];
+    for (let j = sel.i - 1; j >= 0 && arr[j].pushed; j--) katerPinRestoreEntry(part, j);
+    for (let j = sel.i + 1; j < arr.length && arr[j].pushed; j++) katerPinRestoreEntry(part, j);
+    katerPinOrder(part, sel.i);
     katerPinsSave(); katerPinMoveUi();
     if (katerIsSyncView()) { try { renderKater(); } catch (e) {} }
     updateKaterSyncHighlight(true);
@@ -4512,7 +4531,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function katerPinsReset() {
-    Object.keys(katerPinsMoved[katerAudioPart] || {}).forEach(i => katerPinRestoreEntry(katerAudioPart, +i));
+    (KATER_SYNC[katerAudioPart] || []).forEach((e, i) => katerPinRestoreEntry(katerAudioPart, i));
     katerPinsMoved[katerAudioPart] = {};
     katerPinsHidden[katerAudioPart] = [];
     katerPinsCustom[katerAudioPart] = [];
