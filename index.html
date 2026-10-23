@@ -4953,7 +4953,8 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       katerLog('ok rung ' + (katerAudioRung[katerAudioPart] || 0) + ' dur ' + Math.round(el.duration));
       katerAudioMsg('✓ ההקלטה מוכנה (' + formatAudioTime(el.duration) + ') · ' + (katerAudioQuality[katerAudioPart] === 'hq' ? 'איכות מלאה' : 'גרסה דחוסה (גיבוי)') + ' · ' + KATER_AUDIO_BUILD, false);
     });
-    el.addEventListener('timeupdate', () => { updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
+    el.addEventListener('timeupdate', () => { katerStatTick(el); updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
+    ['pause', 'ended', 'seeking', 'play'].forEach(ev => el.addEventListener(ev, () => { katerStatLast = null; if (ev === 'pause' || ev === 'ended') katerStatFlush(); }));
     el.addEventListener('seeked', () => { updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
     ['play', 'pause', 'ended', 'durationchange', 'loadedmetadata', 'emptied'].forEach(ev => el.addEventListener(ev, katerUpdatePlayerUi));
     const seek = document.getElementById('katerSeek');
@@ -5287,6 +5288,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const i = parseInt(v, 10);
     const arr = KATER_SYNC[katerAudioPart];
     if (!arr || !arr[i]) return;
+    katerStat('visit', katerStatKeyForHdr(katerAudioPart, katerSceneHeaderFor(katerAudioPart, i)));
     seekKaterSyncLine(i);
     const hdr = document.getElementById('sync-scene-' + i) || document.getElementById('sync-line-' + i);
     if (hdr) hdr.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -5325,6 +5327,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const part = katerAudioPart;
     const arr = KATER_SYNC[part] || [];
     if (!arr[hdr]) return;
+    katerStat('visit', katerStatKeyForHdr(part, hdr));
     katerScenesSet(part, hdr);
     katerSyncFollow = true;
     renderKater();
@@ -5508,6 +5511,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function setKaterScene(v) {
+    if (v !== 'all') katerStat('visit', v);
     katerScene = v;
     safeSet('delearn_kater_scene', v);
     buildKaterQueue();
@@ -5558,6 +5562,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     if (mode !== 'sync' && mode !== 'scenes' && katerKaraoke) { katerKaraoke = false; const ael = katerAudioEl(); if (ael) ael.muted = false; }
     katerViewMode = mode;
     safeSet('delearn_kater_mode', mode);
+    if (mode === 'scenes') katerStat('visit', katerStatKeyForHdr(katerAudioPart, katerScenesCur(katerAudioPart)));
     if ((mode === 'practice' || mode === 'cards') && !katerQueue.length) buildKaterQueue();
     if (mode === 'quiz') katerQuiz = null;
     renderKater();
@@ -5637,6 +5642,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const item = list[katerVocabIndex];
     if (!item) return;
     const trueIdx = KATER_VOCAB.indexOf(item);
+    katerStat('vw', katerSceneKey(item));
     const set = new Set(getKaterVocabKnown());
     if (known) set.add(trueIdx); else set.delete(trueIdx);
     safeSet('delearn_kater_vocab_known', JSON.stringify([...set]));
@@ -5799,11 +5805,13 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function revealKaterLine() {
+    if (!katerRevealed) katerStat('pr', katerStatLineKey(katerQueue[katerIndex]));
     katerRevealed = true;
     renderKater();
   }
 
   function revealKaterCard() {
+    if (!katerRevealed) katerStat('pr', katerStatLineKey(katerQueue[katerIndex]));
     katerRevealed = !katerRevealed;
     renderKater();
   }
@@ -5896,6 +5904,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const qz = katerQuiz;
     if (!qz || !qz.q || qz.answered !== null) return;
     qz.answered = n;
+    katerStat('pr', katerStatLineKey(qz.q.idx));
     const right = qz.q.options[n].ok;
     if (right) qz.score++; else qz.wrong.push(qz.q.idx);
     setKaterKnown(qz.q.idx, right);
@@ -6088,6 +6097,197 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     katerStarsLast = null; katerStarsSave(); renderKater();
   }
 
+  // <<KATERSTATS>> per-scene progress: listening, visits, line / word practice, plus the "📊 התקדמות" screen
+  const KSTAT_KEY = 'delearn_kater_stats';
+  const KSTAT_LISTEN_GOAL = 5, KSTAT_VISIT_GOAL = 4;
+  let katerStatData = null, katerStatDirty = 0, katerStatLast = null, katerStatOpen = null;
+
+  function katerStatLoad() {
+    if (katerStatData) return katerStatData;
+    let d = null; try { d = JSON.parse(safeGet(KSTAT_KEY, 'null')); } catch (e) {}
+    if (!d || typeof d !== 'object') d = {};
+    d.sc = d.sc || {}; d.days = d.days || {};
+    katerStatData = d; return d;
+  }
+  function katerStatSave() { safeSet(KSTAT_KEY, JSON.stringify(katerStatLoad())); katerStatDirty = 0; }
+  function katerStatDayKey(dt) { const n = dt || new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0'); }
+  function katerStatRec(key) { const d = katerStatLoad(); return d.sc[key] || (d.sc[key] = { sec: 0, visits: 0, pr: 0, vw: 0 }); }
+  function katerStatDayRec() { const d = katerStatLoad(), k = katerStatDayKey(); return d.days[k] || (d.days[k] = { sec: 0, act: 0 }); }
+  function katerStatKeyForHdr(part, hdr) { const e = (KATER_SYNC[part] || [])[hdr]; return e && e.sc ? part + '|' + e.sc : null; }
+  // kind: 'visit' (opened a scene on purpose), 'pr' (a line practised), 'vw' (a word practised)
+  function katerStat(kind, key) {
+    if (!key) return;
+    try {
+      const r = katerStatRec(key), now = Date.now();
+      if (kind === 'visit') { if (r.lastVisit && now - r.lastVisit < 20000) return; r.visits = (r.visits || 0) + 1; r.lastVisit = now; }
+      else if (kind === 'pr') { r.pr = (r.pr || 0) + 1; katerStatDayRec().act++; }
+      else if (kind === 'vw') { r.vw = (r.vw || 0) + 1; katerStatDayRec().act++; }
+      r.last = now; katerStatSave();
+    } catch (e) {}
+  }
+  function katerStatLineKey(idx) { const l = KATER_LINES[idx]; return l ? katerSceneKey(l) : null; }
+  // listening time: add the media seconds that really played to the scene they fell in
+  function katerStatTick(el) {
+    try {
+      if (!el || el.paused || el.seeking || !el.dataset.part) { katerStatLast = null; return; }
+      const part = el.dataset.part, t = el.currentTime, L = katerStatLast;
+      katerStatLast = { part, t };
+      if (!L || L.part !== part) return;
+      const dt = t - L.t;
+      if (dt <= 0 || dt > 3) return;
+      let s = null; katerSyncScenes(part).forEach(x => { if (x.t - KATER_SYNC_LEAD <= L.t) s = x; });
+      if (!s) return;
+      const r = katerStatRec(part + '|' + s.name); r.sec = (r.sec || 0) + dt; r.last = Date.now();
+      katerStatDayRec().sec += dt;
+      katerStatDirty += dt; if (katerStatDirty >= 10) katerStatSave();
+    } catch (e) {}
+  }
+  function katerStatFlush() { katerStatLast = null; if (katerStatDirty > 0) katerStatSave(); }
+  window.addEventListener('pagehide', katerStatFlush);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) katerStatFlush(); });
+
+  function katerStatScenes() {
+    const d = katerStatLoad(), lk = new Set(getKaterKnown()), vk = new Set(getKaterVocabKnown()), out = [];
+    ['1', '2'].forEach(part => {
+      const arr = KATER_SYNC[part] || [], sc = katerSyncScenes(part);
+      sc.forEach((s, k) => {
+        const t1 = k + 1 < sc.length ? sc[k + 1].t : (arr.length ? arr[arr.length - 1].t + 20 : s.t + 60);
+        const key = part + '|' + s.name, rec = d.sc[key] || {};
+        const lines = [], words = [];
+        KATER_LINES.forEach((l, i) => { if (l.part === part && l.scene === s.name && !katerStageOnly(l)) lines.push(i); });
+        KATER_VOCAB.forEach((v, i) => { if (!v.dir && v.part === part && v.scene === s.name) words.push(i); });
+        const dur = Math.max(30, t1 - s.t), sec = rec.sec || 0;
+        out.push({
+          key, part, name: s.name, hdr: s.i, dur, sec, passes: sec / dur, visits: rec.visits || 0, pr: rec.pr || 0, vw: rec.vw || 0, last: rec.last || 0,
+          lines: lines.length, linesKnown: lines.filter(i => lk.has(i)).length, stars: lines.filter(i => katerStars.has(i)).length,
+          words: words.length, wordsKnown: words.filter(i => vk.has(i)).length
+        });
+      });
+    });
+    return out;
+  }
+  function katerStatPct(s) {
+    return {
+      listen: Math.min(1, s.passes / KSTAT_LISTEN_GOAL),
+      visit: Math.min(1, s.visits / KSTAT_VISIT_GOAL),
+      lines: s.lines ? s.linesKnown / s.lines : null,
+      words: s.words ? s.wordsKnown / s.words : null
+    };
+  }
+  function katerStatNeed(s) {
+    const p = katerStatPct(s), parts = [[0.4, p.listen], [0.3, p.lines], [0.3, p.words]].filter(x => x[1] !== null);
+    const w = parts.reduce((a, x) => a + x[0], 0), got = parts.reduce((a, x) => a + x[0] * x[1], 0);
+    const attention = 1 - got / w, weight = 0.5 + 0.5 * Math.min(1, s.lines / 10);
+    return attention * weight;
+  }
+  function katerStatReasons(s) {
+    const r = [], p = katerStatPct(s);
+    if (p.listen < 0.5) r.push(s.passes < 0.1 ? 'כמעט לא שמעת אותה' : 'שמעת אותה רק ' + katerStatNum(s.passes) + ' פעמים');
+    if (p.lines !== null && p.lines < 0.5) r.push('ידעת ' + s.linesKnown + ' מתוך ' + s.lines + ' משפטים');
+    if (p.words !== null && p.words < 0.5) r.push('ידעת ' + s.wordsKnown + ' מתוך ' + s.words + ' מילים');
+    if (!r.length && s.visits < 2) r.push('נכנסת אליה רק ' + (s.visits === 1 ? 'פעם אחת' : 'פעמים: ' + s.visits));
+    return r.join(' · ');
+  }
+  function katerStatNum(x) { return (Math.round(x * 10) / 10).toString().replace(/\.0$/, ''); }
+  function katerStatHue(p) { return 'hsl(' + Math.round(Math.max(0, Math.min(1, p)) * 120) + ',62%,46%)'; }
+  function katerStatDur(sec) { sec = Math.round(sec); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? h + ' שע׳ ' + m + ' דק׳' : (m ? m + ' דק׳' : sec + ' שנ׳'); }
+  function katerStatAgo(ts) {
+    if (!ts) return 'עוד לא';
+    const d = Math.floor((Date.now() - ts) / 86400000);
+    return d <= 0 ? 'היום' : d === 1 ? 'אתמול' : 'לפני ' + d + ' ימים';
+  }
+
+  function katerStatCss() {
+    if (document.getElementById('ksCss')) return;
+    const st = document.createElement('style'); st.id = 'ksCss';
+    st.textContent = `
+      .ks-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin: 0 0 12px; }
+      .ks-card h3 { margin: 0 0 8px; font-size: 15px; }
+      .ks-sub { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+      .ks-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+      .ks-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 6px; text-align: center; }
+      .ks-tile .big { font-size: 20px; font-weight: 800; line-height: 1.2; } .ks-tile .lab { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+      .ks-bar { height: 6px; border-radius: 4px; background: var(--accent-soft); overflow: hidden; margin-top: 5px; } .ks-bar i { display: block; height: 100%; border-radius: 4px; }
+      .ks-focus { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-top: 1px solid var(--line); } .ks-focus:first-of-type { border-top: 0; }
+      .ks-focus .n { min-width: 26px; height: 26px; border-radius: 50%; background: #d9534f; color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+      .ks-focus b { display: block; font-size: 14.5px; } .ks-focus span { font-size: 12.5px; color: var(--ink-soft); }
+      .ks-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+      .ks-btns button { border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 10px; padding: 5px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+      .ks-grid { display: grid; grid-template-columns: 1fr repeat(4, 52px); gap: 4px 5px; align-items: center; }
+      .ks-grid .hd { font-size: 11px; color: var(--ink-soft); text-align: center; line-height: 1.2; }
+      .ks-part { grid-column: 1 / -1; font-weight: 800; font-size: 13px; margin: 10px 0 2px; color: var(--accent); }
+      .ks-name { font-size: 13.5px; line-height: 1.25; padding: 7px 4px; cursor: pointer; border-radius: 8px; }
+      .ks-cell { text-align: center; cursor: pointer; padding: 3px 0; border-radius: 8px; } .ks-cell .v { font-size: 12.5px; font-weight: 700; direction: ltr; }
+      .ks-cell .ks-bar { margin: 3px 4px 0; }
+      .ks-row-open .ks-name, .ks-row-open .ks-cell { background: var(--accent-soft); }
+      .ks-detail { grid-column: 1 / -1; background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; margin: 2px 0 6px; font-size: 13.5px; line-height: 1.7; }
+      .ks-detail .ln { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--line); } .ks-detail .ln:last-of-type { border-bottom: 0; }
+      .ks-days { display: flex; align-items: flex-end; gap: 4px; height: 110px; direction: ltr; margin-top: 6px; }
+      .ks-day { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 10px; color: var(--ink-soft); }
+      .ks-day i { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); min-height: 2px; } .ks-day .num { font-size: 10px; height: 14px; }
+      .ks-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-soft); margin-top: 6px; }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function renderKaterStatsBody() {
+    katerStatCss();
+    const sc = katerStatScenes(), d = katerStatLoad();
+    const totSec = sc.reduce((a, s) => a + s.sec, 0), totDur = sc.reduce((a, s) => a + s.dur, 0);
+    const lines = sc.reduce((a, s) => a + s.lines, 0), lk = sc.reduce((a, s) => a + s.linesKnown, 0);
+    const words = sc.reduce((a, s) => a + s.words, 0), wk = sc.reduce((a, s) => a + s.wordsKnown, 0);
+    const tile = (big, lab, p) => `<div class="ks-tile"><div class="big">${big}</div><div class="lab">${lab}</div><div class="ks-bar"><i style="width:${Math.round(p * 100)}%;background:${katerStatHue(p)}"></i></div></div>`;
+    const tiles = `<div class="ks-tiles">${tile(katerStatNum(totSec / (totDur || 1)) + '×', '🎧 האזנה לכל ההצגה<br>' + katerStatDur(totSec), Math.min(1, totSec / (totDur || 1) / KSTAT_LISTEN_GOAL))}${tile(lk + '/' + lines, '📝 משפטים שלי שידעת', lines ? lk / lines : 0)}${tile(wk + '/' + words, '🔤 מילים שידעת', words ? wk / words : 0)}</div>`;
+
+    const ranked = sc.filter(s => s.lines || s.words).map(s => ({ s, n: katerStatNeed(s) })).sort((a, b) => b.n - a.n).slice(0, 3);
+    const focus = `<div class="ks-card"><h3>🎯 איפה לשים דגש</h3>` + ranked.map((x, i) => `<div class="ks-focus"><div class="n">${i + 1}</div><div style="flex:1"><b>${escapeHtml(x.s.name)} <span>· חלק ${x.s.part}</span></b><span>${escapeHtml(katerStatReasons(x.s) || 'הכי פחות מתורגלת')}</span>
+        <div class="ks-btns"><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','listen')">🎧 האזן</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','practice')">📖 משפטים</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','vocab')">🔤 מילים</button></div></div></div>`).join('') +
+      `<div class="ks-sub" style="margin-top:6px">הדירוג משלב האזנה, משפטים ומילים שידעת, ונותן יותר משקל לסצנות עם הרבה משפטים שלך.</div></div>`;
+
+    const cell = (txt, p) => p === null ? `<div class="ks-cell"><div class="v" style="color:var(--ink-soft)">–</div></div>` : `<div class="ks-cell"><div class="v">${txt}</div><div class="ks-bar"><i style="width:${Math.max(4, Math.round(p * 100))}%;background:${katerStatHue(p)}"></i></div></div>`;
+    let grid = `<div class="ks-grid"><div></div><div class="hd">🎧<br>האזנות</div><div class="hd">🚪<br>כניסות</div><div class="hd">📝<br>משפטים</div><div class="hd">🔤<br>מילים</div>`;
+    let lastPart = '';
+    sc.forEach(s => {
+      if (s.part !== lastPart) { lastPart = s.part; grid += `<div class="ks-part">חלק ${s.part}</div>`; }
+      const p = katerStatPct(s), open = katerStatOpen === s.key, k = escapeHtml(s.key), tog = `onclick="katerStatToggle('${k}')"`;
+      grid += `<div class="ks-name${open ? ' ks-row-open' : ''}" ${tog}>${escapeHtml(s.name)}${s.stars ? ' <span style="font-size:11px">⭐' + s.stars + '</span>' : ''}</div>` +
+        `<div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(katerStatNum(s.passes) + '×', p.listen)}</div><div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(s.visits, p.visit)}</div>` +
+        `<div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(s.lines ? s.linesKnown + '/' + s.lines : '', p.lines)}</div><div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(s.words ? s.wordsKnown + '/' + s.words : '', p.words)}</div>`;
+      if (open) {
+        const ln = (a, b) => `<div class="ln"><span>${a}</span><b>${b}</b></div>`;
+        grid += `<div class="ks-detail">${ln('🎧 האזנה', katerStatNum(s.passes) + ' פעמים (' + katerStatDur(s.sec) + ' מתוך ' + katerStatDur(s.dur) + ' בסצנה)')}${ln('🚪 כניסות', s.visits + ' · אחרונה: ' + katerStatAgo(s.last))}${ln('📝 משפטים שלי שידעת', s.linesKnown + ' מתוך ' + s.lines)}${ln('⭐ משפטים מסומנים', s.stars)}${ln('📖 תרגולי משפטים', s.pr)}${ln('🔤 מילים שידעת', s.wordsKnown + ' מתוך ' + s.words)}${ln('🔤 תרגולי מילים', s.vw)}
+          <div class="ks-btns"><button onclick="katerStatsGo('${k}','listen')">🎧 האזן לסצנה</button><button onclick="katerStatsGo('${k}','practice')">📖 תרגול משפטים</button><button onclick="katerStatsGo('${k}','vocab')">🔤 לימוד מילים</button></div></div>`;
+      }
+    });
+    grid += `</div><div class="ks-legend"><span>🟥 צריך תשומת לב</span><span>🟩 מצוין</span><span>האזנה: יעד ${KSTAT_LISTEN_GOAL} פעמים · כניסות: יעד ${KSTAT_VISIT_GOAL}</span></div>`;
+    const map = `<div class="ks-card"><h3>🗺️ כל הסצנות במבט אחד</h3><div class="ks-sub" style="margin-bottom:4px">לחצו על סצנה לפרטים ולכפתורי קיצור.</div>${grid}</div>`;
+
+    const days = [], now = new Date();
+    for (let i = 13; i >= 0; i--) { const dt = new Date(now); dt.setDate(now.getDate() - i); const k = katerStatDayKey(dt), r = d.days[k] || { sec: 0, act: 0 }; days.push({ dt, min: r.sec / 60, act: r.act || 0 }); }
+    const mx = Math.max(10, ...days.map(x => x.min));
+    const chart = `<div class="ks-card"><h3>📅 דקות האזנה ב-14 הימים האחרונים</h3><div class="ks-days">${days.map(x => `<div class="ks-day"><div class="num">${x.min >= 1 ? Math.round(x.min) : ''}</div><i style="height:${Math.round(x.min / mx * 80)}px"></i><div>${x.dt.getDate()}</div></div>`).join('')}</div><div class="ks-sub" style="direction:ltr;text-align:left;margin-top:4px">${days[0].dt.getDate()}/${days[0].dt.getMonth() + 1} ← → ${days[13].dt.getDate()}/${days[13].dt.getMonth() + 1} (היום)</div></div>`;
+    const fresh = (totSec < 1 && sc.every(s => !s.visits && !s.pr && !s.vw)) ? `<div class="ks-card ks-sub">ספירת האזנות, כניסות ותרגולים מתחילה מהרגע שהתחדש המסך הזה, ולכן אצל סצנות רבות כרגע יש עוד אפסים. מה שכבר סימנת בעבר כידוע (משפטים ומילים) כבר נספר.</div>` : '';
+    return `<div class="ks-wrap" style="padding-top:4px">${fresh}${tiles}${focus}${map}${chart}</div>`;
+  }
+  function katerStatToggle(key) { katerStatOpen = katerStatOpen === key ? null : key; renderKater(); }
+  function katerStatsGo(key, mode) {
+    const s = katerStatScenes().find(x => x.key === key); if (!s) return;
+    katerStat('visit', key);
+    if (mode === 'listen') {
+      katerScenesSet(s.part, s.hdr); katerSyncFollow = true;
+      if (katerAudioPart !== s.part) setKaterAudioPart(s.part);
+      setKaterViewMode('scenes');
+    } else {
+      katerPart = s.part; safeSet('delearn_kater_part', s.part);
+      katerScene = key; safeSet('delearn_kater_scene', key);
+      katerOrder = 'sequence'; safeSet('delearn_kater_order', 'sequence');
+      buildKaterQueue(); katerVocabIndex = 0; katerVocabFlipped = false; katerIndex = 0; katerRevealed = false;
+      katerQuiz = null;
+      setKaterViewMode(mode);
+    }
+    window.scrollTo({ top: 0 });
+  }
+
   function renderKater() {
     const el = document.getElementById('view-kater');
     if (!el) return;
@@ -6098,7 +6298,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         <div class="kseg">${mb('sync', '🎵 האזנה')}${mb('scenes', '🎬 סצנות')}${mb('browse', '📖 קריאה')}</div>
         <div class="kmodes-cap">תרגול</div>
         <div class="kseg">${mb('cards', 'כרטיסיות')}${mb('quiz', 'חידון')}${mb('practice', 'שינון')}${mb('vocab', 'מילים')}</div>
-        <div class="kseg"><button id="katerStarsModeBtn" class="${katerViewMode === 'stars' ? 'on' : ''}" onclick="setKaterViewMode('stars')">⭐ מסומנות${katerStars.size ? ' · ' + katerStars.size : ''}</button></div>
+        <div class="kseg"><button id="katerStarsModeBtn" class="${katerViewMode === 'stars' ? 'on' : ''}" onclick="setKaterViewMode('stars')">⭐ מסומנות${katerStars.size ? ' · ' + katerStars.size : ''}</button>${mb('stats', '📊 התקדמות')}</div>
       </div>`;
     const partRow = katerPartRowHtml();
     updateKaterSyncFollowBtn();
@@ -6117,6 +6317,11 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         updateKaterSyncHighlight(true);
         if (!katerSyncActiveIdx || katerSyncActiveIdx < 0) window.scrollTo({ top: 0 });
       }, 0);
+      return;
+    }
+
+    if (katerViewMode === 'stats') {
+      el.innerHTML = modeRow + renderKaterStatsBody();
       return;
     }
 
