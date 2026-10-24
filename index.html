@@ -2162,239 +2162,7 @@
 
 </script>
 <!--SPEAKMOD-END-->
-<!--DAILY-START-->
-<script>
-/* A monthly calendar of daily words: 15 new words a day, tap a day to see its words, memorise them or be tested on them. */
-(function () {
-  'use strict';
-  const GOAL = 15;
-  const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
-  const DOW = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const pad = n => (n < 10 ? '0' : '') + n;
-  const dkey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-  const todayKey = () => dkey(new Date());
-  const CSS = `
-  .dl-wrap { max-width: 560px; margin: 0 auto; padding: 4px 0 40px; direction: rtl; }
-  .dl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 8px; }
-  .dl-head h2 { margin: 0; font-size: 21px; font-weight: 800; }
-  .dl-nav { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; width: 40px; height: 40px; font-size: 20px; cursor: pointer; box-shadow: 0 3px 0 var(--line, #e5e5e5); }
-  .dl-streak { display: flex; gap: 10px; margin-bottom: 10px; }
-  .dl-stat { flex: 1; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 16px; box-shadow: 0 3px 0 var(--line, #e5e5e5); padding: 8px 6px; text-align: center; }
-  .dl-stat b { display: block; font-size: 22px; font-weight: 800; line-height: 1.15; } .dl-stat span { font-size: 12px; color: var(--ink-soft, #777); }
-  .dl-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; direction: rtl; }
-  .dl-dow { text-align: center; font-size: 12px; font-weight: 800; color: var(--ink-soft, #888); padding: 2px 0; }
-  .dl-day { position: relative; aspect-ratio: 1 / 1.12; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
-  .dl-day.sel { background: var(--accent-soft, #ddf4ff); box-shadow: 0 0 0 2px var(--fun-blue, #1cb0f6); }
-  .dl-day.future { opacity: .4; cursor: default; }
-  .dl-day svg { width: 100%; height: 100%; display: block; }
-  .dl-day .dn { font-size: 13px; font-weight: 800; }
-  .dl-day.today .dn { fill: var(--fun-blue, #1cb0f6); }
-  .dl-panel { margin-top: 14px; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 20px; box-shadow: 0 4px 0 var(--line, #e5e5e5); padding: 14px; }
-  .dl-panel h3 { margin: 0 0 2px; font-size: 18px; font-weight: 800; } .dl-panel .sub { font-size: 13px; color: var(--ink-soft, #777); margin-bottom: 10px; }
-  .dl-btns { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
-  .dl-btn { flex: 1; min-width: 120px; border: 0; border-radius: 14px; padding: 12px 8px; font: inherit; font-size: 15.5px; font-weight: 800; color: #fff; cursor: pointer; background: var(--fun-green, #58cc02); box-shadow: 0 4px 0 var(--fun-green-dk, #58a700); }
-  .dl-btn.blue { background: var(--fun-blue, #1cb0f6); box-shadow: 0 4px 0 var(--fun-blue-dk, #1899d6); }
-  .dl-btn.sec { background: var(--surface, #fff); color: inherit; border: 2px solid var(--line, #e5e5e5); box-shadow: 0 3px 0 var(--line, #e5e5e5); }
-  .dl-btn:active { transform: translateY(2px); }
-  .dl-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line, #e5e5e5); padding: 8px 2px; }
-  .dl-row:last-child { border-bottom: 0; }
-  .dl-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--fun-orange, #ff9600); } .dl-dot.k { background: var(--fun-green, #58cc02); }
-  .dl-row .t { flex: 1; min-width: 0; } .dl-row .d { direction: ltr; text-align: left; font-weight: 800; } .dl-row .h { font-size: 13px; color: var(--ink-soft, #777); }
-  .dl-row button { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; padding: 4px 9px; font: inherit; font-size: 15px; cursor: pointer; }
-  .dl-empty { text-align: center; color: var(--ink-soft, #777); padding: 14px 4px; font-size: 14px; }
-  .dl-banner { display: flex; align-items: center; gap: 12px; background: var(--surface, #fff); border: 2px solid var(--fun-blue, #1cb0f6); border-radius: 20px; box-shadow: 0 4px 0 var(--fun-blue, #1cb0f6); padding: 9px 14px; margin: 4px 0 14px; cursor: pointer; }
-  .dl-banner svg { width: 46px; height: 46px; flex: none; } .dl-banner b { display: block; font-size: 16px; } .dl-banner small { color: var(--ink-soft, #777); font-size: 12.5px; }
-  .dl-banner .go { margin-inline-start: auto; background: var(--fun-blue, #1cb0f6); color: #fff; font-weight: 800; border-radius: 12px; padding: 8px 14px; box-shadow: 0 3px 0 var(--fun-blue-dk, #1899d6); }
-  .dl-pk { position: fixed; inset: 0; z-index: 8500; background: var(--bg, #fff); color: var(--ink, #3c3c3c); display: flex; flex-direction: column; direction: rtl; padding: max(12px, env(safe-area-inset-top)) 14px 0; box-sizing: border-box; }
-  .dl-pk-top { display: flex; align-items: center; gap: 8px; } .dl-pk-top h2 { flex: 1; margin: 0; font-size: 18px; font-weight: 800; }
-  .dl-chip { display: inline-block; background: var(--accent-soft, #ddf4ff); color: var(--fun-blue-dk, #1899d6); font-weight: 800; border-radius: 999px; padding: 3px 11px; font-size: 14px; }
-  .dl-chip.full { background: #e1f7c8; color: #3d8c00; }
-  .dl-pk-tools { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
-  .dl-pk-tools input, .dl-pk-tools select { flex: 1; min-width: 0; border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; padding: 9px 10px; font: inherit; font-size: 15px; }
-  .dl-pk-tools button { border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: inherit; border-radius: 12px; padding: 8px 12px; font: inherit; font-size: 14.5px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 0 var(--line, #e5e5e5); }
-  .dl-pk-tools button.sug { border-color: var(--fun-orange, #ff9600); color: var(--fun-orange, #ff9600); box-shadow: 0 3px 0 var(--fun-orange, #ff9600); }
-  .dl-pk-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px; }
-  .dl-pk-sec { font-size: 12.5px; font-weight: 800; color: var(--ink-soft, #777); padding: 8px 2px 2px; }
-  .dl-it { display: flex; align-items: center; gap: 10px; width: 100%; text-align: right; background: var(--surface, #fff); border: 2px solid var(--line, #e5e5e5); border-radius: 14px; padding: 8px 10px; margin-bottom: 6px; font: inherit; color: inherit; cursor: pointer; }
-  .dl-it.on { border-color: var(--fun-blue, #1cb0f6); background: var(--accent-soft, #ddf4ff); }
-  .dl-ck { width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--line, #cfcfcf); flex: none; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 15px; }
-  .dl-it.on .dl-ck { background: var(--fun-blue, #1cb0f6); border-color: var(--fun-blue, #1cb0f6); }
-  .dl-it .t { flex: 1; min-width: 0; } .dl-it .d { direction: ltr; text-align: left; font-weight: 800; } .dl-it .h { font-size: 13px; color: var(--ink-soft, #777); }
-  .dl-tag { font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 2px 8px; white-space: nowrap; flex: none; background: var(--line, #eee); color: var(--ink-soft, #777); }
-  .dl-tag.weak { background: #ffe9cc; color: #c76a00; } .dl-tag.new { background: #e6e8ff; color: #4b55c9; } .dl-tag.known { background: #e1f7c8; color: #3d8c00; }
-  .dl-pk-foot { padding: 10px 0 max(12px, env(safe-area-inset-bottom)); background: var(--bg, #fff); border-top: 1px solid var(--line, #e5e5e5); }
-  .dl-pk-foot .dl-btn { width: 100%; } .dl-btn[disabled] { opacity: .45; box-shadow: none; }
-  .dl-fl { display: block; margin: 12px 0 0; font-size: 13.5px; font-weight: 800; color: var(--ink-soft, #777); } .dl-fl input, .dl-fl select, .dl-fl textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 5px; border: 2px solid var(--line, #e5e5e5); background: var(--surface, #fff); color: var(--ink, #3c3c3c); border-radius: 12px; padding: 11px 12px; font: inherit; font-size: 17px; font-weight: 600; } .dl-fl textarea { min-height: 64px; resize: none; direction: rtl; } .dl-fl input:focus, .dl-fl textarea:focus { outline: none; border-color: var(--fun-blue, #1cb0f6); }
-  .ls-hint-x { font-size: 13.5px; color: var(--ink-soft, #777); }
-  .dl-ov { position: fixed; inset: 0; z-index: 8400; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--bg, #fff); color: var(--ink, #3c3c3c); padding: max(14px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
-  .dl-x { background: none; border: 0; font-size: 26px; line-height: 1; color: var(--ink-soft, #777); padding: 6px 4px; cursor: pointer; }
-  `;
-  function injectCss() { if (document.getElementById('dlCss')) return; const s = document.createElement('style'); s.id = 'dlCss'; s.textContent = CSS; document.head.appendChild(s); }
 
-  function create(cfg) {
-    let data = {};
-    const load = () => { try { data = JSON.parse(localStorage.getItem(cfg.key) || '{}') || {}; } catch (e) { data = {}; } };
-    const save = () => { try { localStorage.setItem(cfg.key, JSON.stringify(data)); } catch (e) {} };
-    load();
-    const byId = () => new Map(cfg.items().map(it => [String(it.id), it]));
-    const wordsOf = k => (data[k] || []).filter(id => byId().has(String(id)));
-    const assigned = () => { const s = new Set(); Object.keys(data).forEach(k => data[k].forEach(id => s.add(String(id)))); return s; };
-    const complete = k => wordsOf(k).length >= GOAL;
-    function streak() {
-      let n = 0; const d = new Date(); if (!complete(dkey(d))) d.setDate(d.getDate() - 1);
-      while (complete(dkey(d))) { n++; d.setDate(d.getDate() - 1); }
-      return n;
-    }
-    function ring(k, isSel, isToday, future, dayNum) {
-      const ids = wordsOf(k), n = ids.length, frac = Math.min(1, n / GOAL), C = 2 * Math.PI * 17;
-      const kn = cfg.getKnown(), allKnown = n >= GOAL && ids.every(id => kn.has(id));
-      const col = n >= GOAL ? (allKnown ? '#ffc800' : 'var(--fun-green, #58cc02)') : 'var(--fun-orange, #ff9600)';
-      return '<svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--line, #e5e5e5)" stroke-width="5"/>' +
-        (n ? '<circle cx="22" cy="22" r="17" fill="none" stroke="' + col + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (C * frac).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 22 22)"/>' : '') +
-        '<text class="dn" x="22" y="26.5" text-anchor="middle" font-size="13" font-weight="800" fill="currentColor">' + dayNum + '</text></svg>';
-    }
-    function miniRing(n, size) {
-      const frac = Math.min(1, n / GOAL), C = 2 * Math.PI * 17;
-      return '<svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17" fill="none" stroke="var(--line, #e5e5e5)" stroke-width="5"/>' + (n ? '<circle cx="22" cy="22" r="17" fill="none" stroke="' + (n >= GOAL ? 'var(--fun-green, #58cc02)' : 'var(--fun-orange, #ff9600)') + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (C * frac).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 22 22)"/>' : '') + '<text x="22" y="26.5" text-anchor="middle" font-size="14" font-weight="800" fill="currentColor">' + n + '</text></svg>';
-    }
-
-    function statusOf(it, kn) { const st = cfg.status ? cfg.status(it) : (kn.has(it.id) ? 'known' : 'new'); return st; }
-    function picker(host, k, done) {
-      const kn = cfg.getKnown(), cur = new Set(wordsOf(k).map(String)), where = new Map();
-      Object.keys(data).forEach(dk => { if (dk !== k) data[dk].forEach(id => where.set(String(id), dk)); });
-      let all = []; const mine = new Set();
-      const build = () => {
-        const kn2 = cfg.getKnown();
-        all = cfg.items().map((it, i) => ({ it: it, i: i, st: statusOf(it, kn2), pr: mine.has(String(it.id)) ? -1 : (cfg.priority ? cfg.priority(it) : (kn2.has(it.id) ? 2 : 1)) }))
-          .filter(x => !cur.has(String(x.it.id)));
-        all.sort((a, b) => a.pr - b.pr || a.i - b.i);
-        const SUGN = 30; all.forEach((x, r) => { x.rec = x.pr < 2 && x.pr >= 0 && !where.has(String(x.it.id)) && r < SUGN; x.mine = mine.has(String(x.it.id)); });
-      };
-      build();
-      const chosen = new Set(); let q = '', cat = 'all';
-      const room = () => Math.max(0, GOAL - cur.size);
-      const ov = document.createElement('div'); ov.className = 'dl-pk'; document.body.appendChild(ov);
-      const dd = k.split('-').map(Number), label = k === todayKey() ? 'היום' : dd[2] + ' ' + MONTHS[dd[1] - 1];
-      const tagTxt = { known: 'ידועה', weak: 'חלשה', new: 'חדשה' };
-      function list() {
-        const rows = all.filter(x => (cat === 'all' || x.it.cat === cat) && (!q || (x.it.de + ' ' + x.it.he).toLowerCase().indexOf(q) >= 0));
-        const own = rows.filter(x => x.mine), rec = rows.filter(x => x.rec && !x.mine), rest = rows.filter(x => !x.rec && !x.mine);
-        const rowH = x => { const id = String(x.it.id), on = chosen.has(id), w = where.get(id); return '<button class="dl-it' + (on ? ' on' : '') + '" data-id="' + esc(id) + '"><span class="dl-ck">' + (on ? '✓' : '') + '</span><div class="t"><div class="d">' + esc(x.it.de) + '</div><div class="h">' + esc(x.it.he) + '</div></div>' + (w ? '<span class="dl-tag">כבר ב-' + Number(w.slice(8)) + '.' + Number(w.slice(5, 7)) + '</span>' : '') + '<span class="dl-tag ' + x.st + '">' + tagTxt[x.st] + '</span></button>'; };
-        return (own.length ? '<div class="dl-pk-sec">✏️ המילים שהוספת בעצמך</div>' + own.map(rowH).join('') : '') + (rec.length ? '<div class="dl-pk-sec">✨ מומלצות — מילים שעוד לא שולטים בהן</div>' + rec.map(rowH).join('') : '') +
-          (rest.length ? '<div class="dl-pk-sec">' + (rec.length ? 'שאר המילים' : 'מילים') + ' (' + rest.length + ')</div>' + rest.map(rowH).join('') : '') +
-          (!rows.length ? '<div class="dl-empty">לא נמצאו מילים.</div>' : '');
-      }
-      function foot() {
-        const c = chosen.size, full = cur.size + c >= GOAL;
-        ov.querySelector('#pkChip').className = 'dl-chip' + (full ? ' full' : ''); ov.querySelector('#pkChip').textContent = (cur.size + c) + '/' + GOAL;
-        const b = ov.querySelector('#pkOk'); b.disabled = !c; b.textContent = c ? 'הוסף ' + c + ' מילים ל' + label : 'בחרו מילים';
-      }
-      function bindList() {
-        ov.querySelectorAll('.dl-it').forEach(b => { b.onclick = () => { const id = b.dataset.id; if (chosen.has(id)) chosen.delete(id); else chosen.add(id); b.classList.toggle('on'); b.querySelector('.dl-ck').textContent = chosen.has(id) ? '✓' : ''; foot(); }; });
-      }
-      const catOpts = (cfg.categories || []).map(c => '<option value="' + esc(c.id) + '">' + esc(c.label) + '</option>').join('');
-      ov.innerHTML = '<div class="dl-pk-top"><button class="dl-x" id="pkX">✕</button><h2>בחירת מילים ל' + esc(label) + '</h2><span class="dl-chip" id="pkChip"></span></div>' +
-        '<div class="dl-pk-tools"><input id="pkQ" type="search" placeholder="חיפוש מילה…">' + (catOpts ? '<select id="pkCat"><option value="all">' + esc(cfg.allLabel || 'כל הקטגוריות') + '</option>' + catOpts + '</select>' : '') + '</div>' +
-        '<div class="dl-pk-tools"><button class="sug" id="pkSug">✨ הצע לי ' + (room() || 5) + '</button><button id="pkClr">נקה בחירה</button>' + (cfg.addCustom ? '<button id="pkOwn" style="border-color:var(--fun-green,#58cc02);color:var(--fun-green,#58cc02);box-shadow:0 3px 0 var(--fun-green,#58cc02)">➕ מילה משלי</button>' : '') + '</div>' +
-        '<div class="dl-pk-list" id="pkList"></div><div class="dl-pk-foot"><button class="dl-btn" id="pkOk" disabled></button></div>';
-      const L = ov.querySelector('#pkList'); const render = () => { L.innerHTML = list(); bindList(); foot(); };
-      render();
-      ov.querySelector('#pkX').onclick = () => ov.remove();
-      ov.querySelector('#pkQ').oninput = e => { q = e.target.value.trim().toLowerCase(); render(); };
-      if (ov.querySelector('#pkCat')) ov.querySelector('#pkCat').onchange = e => { cat = e.target.value; render(); };
-      ov.querySelector('#pkClr').onclick = () => { chosen.clear(); render(); };
-      ov.querySelector('#pkSug').onclick = () => {
-        // suggestions only pre-tick the words; the choice stays yours
-        let need = (room() || 5) - chosen.size; for (const x of all) { if (need <= 0) break; if (x.rec && !chosen.has(String(x.it.id)) && (cat === 'all' || x.it.cat === cat)) { chosen.add(String(x.it.id)); need--; } }
-        q = ''; ov.querySelector('#pkQ').value = ''; render(); L.scrollTop = 0;
-      };
-      if (ov.querySelector('#pkOwn')) ov.querySelector('#pkOwn').onclick = () => {
-        const f = document.createElement('div'); f.className = 'dl-pk dl-pk-form'; f.style.zIndex = 8600; ov.appendChild(f);
-        f.innerHTML = '<div class="dl-pk-top"><button class="dl-x" id="fmX">✕</button><h2>הוספת מילה משלך</h2></div>' +
-          '<div style="flex:1;overflow-y:auto;padding-top:10px"><div class="ls-hint-x">המילה נשמרת באוצר המילים הקבוע שלך (בקטגוריה "המילים שלי") ונוספת לבחירה של היום.</div>' +
-          '<label class="dl-fl">המילה או הביטוי בגרמנית<input id="fmDe" type="text" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="למשל: die Steckdose"></label>' +
-          '<label class="dl-fl">התרגום בעברית<input id="fmHe" type="text" dir="rtl" autocomplete="off" placeholder="למשל: שקע חשמל"></label>' +
-          '<label class="dl-fl">אם זה שם עצם: der / die / das (לא חובה)<select id="fmG"><option value="">לא שם עצם / לא יודע</option><option>der</option><option>die</option><option>das</option></select></label>' +
-          '<label class="dl-fl">איך אזכור אותה? אסוציאציה (לא חובה)<textarea id="fmNote" placeholder="צליל דומה בעברית, משפט, תמונה בראש…"></textarea></label>' +
-          '<div id="fmErr" style="color:#c4264a;font-weight:700;min-height:20px"></div></div>' +
-          '<div class="dl-pk-foot"><button class="dl-btn" id="fmOk">הוסף לבחירה</button></div>';
-        const $f = id => f.querySelector('#' + id);
-        $f('fmX').onclick = () => f.remove();
-        $f('fmDe').focus();
-        $f('fmOk').onclick = () => {
-          const de = $f('fmDe').value.trim(), he = $f('fmHe').value.trim();
-          if (!de || !he) { $f('fmErr').textContent = 'צריך למלא גם את המילה בגרמנית וגם את התרגום.'; return; }
-          let r = null; try { r = cfg.addCustom({ de: de, he: he, gender: $f('fmG').value, note: $f('fmNote').value.trim() }); } catch (e) { r = null; }
-          if (!r) { $f('fmErr').textContent = 'לא הצלחתי להוסיף. נסו שוב.'; return; }
-          const id = String(r.id);
-          if (cur.has(id)) { $f('fmErr').textContent = 'המילה הזאת כבר ברשימה של היום.'; return; }
-          mine.add(id); chosen.add(id); build(); f.remove(); q = ''; ov.querySelector('#pkQ').value = ''; cat = 'all'; const sel = ov.querySelector('#pkCat'); if (sel) sel.value = 'all'; render(); L.scrollTop = 0;
-        };
-      };
-      ov.querySelector('#pkOk').onclick = () => {
-        const idOf = new Map(cfg.items().map(it => [String(it.id), it.id]));
-        data[k] = (data[k] || []).concat([...chosen].map(id => idOf.get(id)).filter(id => id !== undefined)); save();
-        ov.remove(); done();
-      };
-    }
-    let view = new Date(); view.setDate(1); let sel = todayKey();
-    function mount(el, onExit) {
-      injectCss(); load();
-      const draw = () => {
-        const y = view.getFullYear(), m = view.getMonth(), first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate(), tk = todayKey();
-        let cells = ''; for (let i = 0; i < first.getDay(); i++) cells += '<div></div>';
-        for (let d = 1; d <= days; d++) {
-          const k = y + '-' + pad(m + 1) + '-' + pad(d), future = k > tk;
-          cells += '<button class="dl-day' + (k === sel ? ' sel' : '') + (k === tk ? ' today' : '') + (future ? ' future' : '') + '" data-k="' + k + '" aria-label="' + d + ' ' + MONTHS[m] + '">' + ring(k, k === sel, k === tk, future, d) + '</button>';
-        }
-        const ids = wordsOf(sel), n = ids.length, kn = cfg.getKnown(), by = byId();
-        const known = ids.filter(id => kn.has(id)).length, sd = sel.split('-').map(Number), isToday = sel === tk, isFuture = sel > tk;
-        const total = Object.keys(data).reduce((a, k) => a + wordsOf(k).length, 0), doneDays = Object.keys(data).filter(complete).length;
-        let h = '<div class="dl-wrap">' + (onExit ? '<div class="dl-head"><button class="dl-x" id="dlX">✕</button><h2>📅 ' + esc(cfg.title || '15 מילים ביום') + '</h2><span style="width:34px"></span></div>' : '') +
-          '<div class="dl-streak"><div class="dl-stat"><b>🔥 ' + streak() + '</b><span>ימים ברצף</span></div><div class="dl-stat"><b>' + total + '</b><span>מילים בלוח</span></div><div class="dl-stat"><b>' + doneDays + '</b><span>ימים מלאים</span></div></div>' +
-          '<div class="dl-head"><button class="dl-nav" id="dlNext" aria-label="חודש הבא">›</button><h2>' + MONTHS[m] + ' ' + y + '</h2><button class="dl-nav" id="dlPrev" aria-label="חודש קודם">‹</button></div>' +
-          '<div class="dl-grid">' + DOW.map(x => '<div class="dl-dow">' + x + '</div>').join('') + cells + '</div>';
-        h += '<div class="dl-panel"><h3>' + (isToday ? 'היום' : sd[2] + ' ' + MONTHS[sd[1] - 1]) + ' · ' + n + '/' + GOAL + ' מילים</h3><div class="sub">' + (n ? 'ידועות בקערה הירוקה: ' + known + ' מתוך ' + n : isFuture ? 'עוד לא הגיע היום הזה.' : 'עוד לא הוספת מילים ליום הזה.') + '</div>';
-        if (!isFuture) {
-          if (n < GOAL) h += '<div class="dl-btns"><button class="dl-btn" id="dlAdd">✋ בחר ' + (GOAL - n) + ' מילים' + (isToday ? ' להיום' : '') + '</button></div>';
-          if (n) h += '<div class="dl-btns"><button class="dl-btn blue" id="dlStudy">🥣 שנן</button><button class="dl-btn blue" id="dlTest">🎤 בחן אותי</button></div>';
-          h += (n ? ids.map(id => { const it = by.get(String(id)); return '<div class="dl-row"><i class="dl-dot' + (kn.has(id) ? ' k' : '') + '"></i><div class="t"><div class="d">' + esc(it.de) + '</div><div class="h">' + esc(it.he) + '</div>' + (cfg.getNote && cfg.getNote(it) ? '<div class="h" style="color:#8a6a00">💡 ' + esc(cfg.getNote(it)) + '</div>' : '') + '</div><button data-say="' + esc(id) + '" aria-label="השמע">🔊</button><button data-rm="' + esc(id) + '" aria-label="הסר" style="color:var(--ink-soft)">✕</button></div>'; }).join('') : '<div class="dl-empty">לחצו על "בחר" ובחרו בעצמכם ' + GOAL + ' מילים ליום הזה. אפשר לבקש הצעות מהמילים שעוד לא שולטים בהן.</div>');
-          if (n >= GOAL) h += '<div class="dl-btns"><button class="dl-btn sec" id="dlMore">+ בחר עוד מילים</button></div>';
-        }
-        h += '</div></div>';
-        el.innerHTML = h;
-        const $ = id => el.querySelector('#' + id);
-        if ($('dlX')) $('dlX').onclick = onExit;
-        $('dlPrev').onclick = () => { view = new Date(y, m - 1, 1); draw(); };
-        $('dlNext').onclick = () => { view = new Date(y, m + 1, 1); draw(); };
-        el.querySelectorAll('.dl-day').forEach(b => { b.onclick = () => { if (b.classList.contains('future')) return; sel = b.dataset.k; draw(); }; });
-        if ($('dlAdd')) $('dlAdd').onclick = () => picker(el, sel, draw);
-        if ($('dlMore')) $('dlMore').onclick = () => picker(el, sel, draw);
-        if ($('dlStudy')) $('dlStudy').onclick = () => cfg.study(ids, draw);
-        if ($('dlTest')) $('dlTest').onclick = () => cfg.test(ids, draw);
-        el.querySelectorAll('[data-say]').forEach(b => { b.onclick = () => { const it = by.get(b.dataset.say); if (it && cfg.speak) cfg.speak(it.de); }; });
-        el.querySelectorAll('[data-rm]').forEach(b => { b.onclick = () => { data[sel] = (data[sel] || []).filter(x => String(x) !== b.dataset.rm); save(); draw(); }; });
-      };
-      draw();
-    }
-    function refreshBanner(el) {
-      if (!el) return; injectCss(); load();
-      const n = wordsOf(todayKey()).length, st = streak();
-      el.innerHTML = '<div class="dl-banner">' + miniRing(n) + '<div><b>15 מילים ביום</b><small>' + (n >= GOAL ? 'היום הושלם' + (st > 1 ? ' · ' + st + ' ימים ברצף' : '') : 'היום ' + n + '/' + GOAL) + '</small></div><span class="go">' + (n >= GOAL ? 'לוח' : 'פתח') + '</span></div>';
-      el.firstChild.onclick = () => cfg.openCalendar();
-    }
-    function overlay() {
-      injectCss(); const ov = document.createElement('div'); ov.className = 'dl-ov'; document.body.appendChild(ov);
-      mount(ov, () => { ov.remove(); if (cfg.onClose) cfg.onClose(); });
-    }
-    return { mount: mount, refreshBanner: refreshBanner, overlay: overlay, _data: () => data };
-  }
-  window.Daily = { create: create };
-})();
-
-</script>
-<!--DAILY-END-->
 <!--BOWLS-START-->
 <script>
 /* Two bowls: words I know and words I'm still learning. A word moves to the green bowl only when I know it; otherwise it comes back. */
@@ -2737,7 +2505,7 @@
     if (M.runPhase) return 'הגענו לשלב האחרון: ' + (M.left === 1 ? 'מחר טסים' : 'עוד יומיים טסים') + '. לא לומדים כלום חדש. עושים הרצות מלאות מול ההקלטה ומחזקים את השורות החלשות.';
     if (!next) return 'סיימת את כל מה שתוכנן להיום. זמן מצוין לעצור, לנוח ולישון. השינה היא חלק מהשינון.';
     let m = 'יום ' + dayNo + ' · נשארו ' + M.left + ' ימים. ' + n + ' מתוך ' + total + ' סצנות כבר בידיים שלך.';
-    if (M.compress) m += ' הקצב מחייב מצב אינטנסיבי: אני מדלג על המילים הבודדות ועל ההשלמות (המילים נמצאות בקערות ובלוח 15 ביום), ומתמקד בהבנה, בשינון ובבחינה.';
+    if (M.compress) m += ' הקצב מחייב מצב אינטנסיבי: אני מדלג על המילים הבודדות ועל ההשלמות (המילים נמצאות בקערות), ומתמקד בהבנה, בשינון ובבחינה.';
     return m;
   }
 
@@ -3394,7 +3162,6 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   </div>
 
   <div id="coachBanner"></div>
-  <div id="dailyBanner"></div>
   <div class="view active" id="view-kater"></div>
 </div>
 <div class="kater-audio-bar" id="katerAudioBar" style="display:none;">
@@ -5747,7 +5514,6 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         ${katerVocabShuffle ? '<button class="nav-btn" onclick="reshuffleKaterVocab()">ערבבו שוב</button>' : ''}
         <button class="nav-btn" onclick="openKaterSpeak()">🎤 בחינה בדיבור</button>
         <button class="nav-btn" onclick="openBowls()">🥣 קערות</button>
-        <button class="nav-btn" onclick="openDaily()">📅 15 ביום</button>
       </div>`;
     if (!list.length) {
       return dirRow + `<div class="vocab-missed-empty">אין מילים בסצנה הזאת.</div>`;
@@ -6663,57 +6429,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
   // <<BOWLSADAPT-END>>
 
-  // <<DAILYADAPT-START>>
-  var _dailyKat = null;
-  function dailyKatItems() {
-    const items = [];
-    KATER_VOCAB.forEach((v, i) => { if (v.dir) return; items.push({ id: i, de: v.de, he: spCleanHe(v.he), pos: v.pos, cat: katerSceneKey(v), ref: i, gender: v.gender }); });
-    return items;
-  }
-  function dailyKatKnown() { return new Set(getKaterVocabKnown()); }
-  function dailyKat() {
-    if (_dailyKat || !window.Daily) return _dailyKat;
-    const toSpeak = it => ({ ref: it.id, prompt: it.he, answer: it.de, display: (it.gender ? it.gender + ' ' : '') + it.de, hint: it.pos });
-    const byIds = ids => { const m = new Map(dailyKatItems().map(i => [i.id, i])); return ids.map(id => m.get(id)).filter(Boolean); };
-    const setK = (id, on) => { const s = dailyKatKnown(); if (on) s.add(id); else s.delete(id); safeSet('delearn_kater_vocab_known', JSON.stringify([...s])); };
-    _dailyKat = Daily.create({
-      key: 'delearn_kater_daywords', title: '15 מילים ביום',
-      items: dailyKatItems, getKnown: dailyKatKnown,
-      categories: (function () { const m = new Map(); KATER_VOCAB.forEach(v => { if (v.dir) return; const k = katerSceneKey(v); if (!m.has(k)) m.set(k, 'חלק ' + v.part + ' · ' + v.scene); }); return Array.from(m.entries()).map(([id, label]) => ({ id: id, label: label })); })(), allLabel: 'כל הסצנות',
-      status: it => dailyKatKnown().has(it.id) ? 'known' : 'new',
-      priority: it => dailyKatKnown().has(it.id) ? 2 : 1,
-      speak: t => { try { speak(String(t), null); } catch (e) {} },
-      getNote: it => { try { return getKaterVocabNotes()[katerVocabNoteKey(it)] || ''; } catch (e) { return ''; } },
-      study: (ids, redraw) => {
-        if (!window.Bowls) return;
-        Bowls.open({
-          title: 'שינון המילים של היום', items: byIds(ids), categories: [], allLabel: 'המילים של היום',
-          getNote: it => getKaterVocabNotes()[katerVocabNoteKey(it)] || '',
-          setNote: (it, t) => { const n = getKaterVocabNotes(); if (t) n[katerVocabNoteKey(it)] = t; else delete n[katerVocabNoteKey(it)]; safeSet('delearn_kater_vocab_notes', JSON.stringify(n)); },
-          getKnown: dailyKatKnown, setKnown: setK,
-          speak: t => { try { speak(String(t), null); } catch (e) {} },
-          onClose: redraw
-        });
-      },
-      test: (ids, redraw) => {
-        if (!window.SpeakPractice) return;
-        SpeakPractice.open({
-          title: 'מבחן · המילים של היום', storeKey: 'delearn_kater_sp_daily', autostart: true,
-          items: byIds(ids).map(toSpeak),
-          onResult: (idx, ok) => setK(idx, !!ok),
-          getGroups: spKaterGroups, getItems: () => [],
-          onClose: redraw
-        });
-      },
-      openCalendar: () => openDaily(),
-      onClose: () => { refreshDailyBanner(); try { renderKater(); } catch (e) {} }
-    });
-    return _dailyKat;
-  }
-  function openDaily() { const d = dailyKat(); if (d) d.overlay(); }
-  function refreshDailyBanner() { const d = dailyKat(); const el = document.getElementById('dailyBanner'); if (d && el) d.refreshBanner(el); }
-  try { refreshDailyBanner(); } catch (e) {}
-  // <<DAILYADAPT-END>>
+
 
   switchTab('kater');
   renderKater();
