@@ -457,6 +457,10 @@
     padding: 12px 14px;
     margin-bottom: 10px;
   }
+  .kp-cues { margin: 6px 0 4px; } .kp-cue { background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; margin: 5px 0; font-size: 17px; line-height: 1.45; text-align: left; } .kp-cue b { color: var(--accent); } .kp-cue small { display: block; font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; text-align: right; }
+  .kp-btns { display: flex; gap: 6px; margin: 8px 0 2px; } .kp-btns button { flex: 1; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 12px; padding: 8px 6px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; } .kp-btns .kp-listen { flex: 3; background: var(--accent); color: var(--surface); } .kp-btns .kp-he.on { background: var(--accent-soft); }
+  .kp-status { min-height: 20px; font-size: 13.5px; color: var(--ink-soft); text-align: center; margin: 4px 0; font-weight: 600; }
+  .kp-flip { animation: kpFlip .45s ease; } @keyframes kpFlip { from { transform: perspective(700px) rotateY(90deg); opacity: .2; } to { transform: perspective(700px) rotateY(0); opacity: 1; } }
   .kater-cue { font-size: 11.5px; color: var(--ink-soft); margin-bottom: 6px; line-height: 1.4; }
   .kater-de-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
   .kater-de {
@@ -4953,7 +4957,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       katerLog('ok rung ' + (katerAudioRung[katerAudioPart] || 0) + ' dur ' + Math.round(el.duration));
       katerAudioMsg('✓ ההקלטה מוכנה (' + formatAudioTime(el.duration) + ') · ' + (katerAudioQuality[katerAudioPart] === 'hq' ? 'איכות מלאה' : 'גרסה דחוסה (גיבוי)') + ' · ' + KATER_AUDIO_BUILD, false);
     });
-    el.addEventListener('timeupdate', () => { katerStatTick(el); updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
+    el.addEventListener('timeupdate', () => { katerStatTick(el); katerCueTick(el); updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
     ['pause', 'ended', 'seeking', 'play'].forEach(ev => el.addEventListener(ev, () => { katerStatLast = null; if (ev === 'pause' || ev === 'ended') katerStatFlush(); }));
     el.addEventListener('seeked', () => { updateKaterSyncHighlight(false); katerUpdatePlayerUi(); });
     ['play', 'pause', 'ended', 'durationchange', 'loadedmetadata', 'emptied'].forEach(ev => el.addEventListener(ev, katerUpdatePlayerUi));
@@ -5805,6 +5809,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function revealKaterLine() {
+    katerCueStop();
     if (!katerRevealed) katerStat('pr', katerStatLineKey(katerQueue[katerIndex]));
     katerRevealed = true;
     renderKater();
@@ -6014,6 +6019,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   }
 
   function judgeKaterLine(known) {
+    katerCueStop();
     const idx = katerQueue[katerIndex];
     if (idx === undefined) return;
     setKaterKnown(idx, known);
@@ -6095,6 +6101,48 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerStarsDropKnown() {
     if (katerStarsLast) katerStarsLast.known.forEach(i => katerStars.delete(i));
     katerStarsLast = null; katerStarsSave(); renderKater();
+  }
+
+
+  // <<KATERCUE>> practice card: the cue is the previous line in German, can be heard from the recording, and the audio stops right when it is Kater's turn
+  let katerCueHe = safeGet('delearn_kater_cue_he', '0') === '1';
+  let katerStopAt = null;
+  function toggleKaterCueHe() { katerCueHe = !katerCueHe; safeSet('delearn_kater_cue_he', katerCueHe ? '1' : '0'); renderKater(); }
+  function katerCueClean(d) { return String(d || '').replace(/\s+[A-ZÄÖÜ]{3,}(\s+[A-ZÄÖÜ]{3,})*\s*$/, '').replace(/^[\s:]+/, '').trim(); }
+  function katerCueInfo(idx) {
+    const l = KATER_LINES[idx]; if (!l) return null;
+    const arr = KATER_SYNC[l.part] || [], i = arr.findIndex(e => e.k === idx);
+    if (i < 1) return null;
+    let from = i - 1;
+    if (from >= 1 && katerCueClean(arr[i - 1].d).length < 16 && arr[i - 2].k < 0) from = i - 2; // a short interjection: add the line before it for context
+    const cues = [];
+    for (let j = from; j < i; j++) cues.push({ s: arr[j].s, d: katerCueClean(arr[j].d), e: arr[j].e || '' });
+    return { part: l.part, i, cues, start: arr[from].t, mine: arr[i].t, end: arr[i + 1] ? arr[i + 1].t : arr[i].t + 8 };
+  }
+  function katerCueStatus(txt) { const el = document.getElementById('kpStatus'); if (el) el.textContent = txt || ''; }
+  function katerWhenReady(part, fn, tries) {
+    const el = katerAudioEl(); tries = tries || 0;
+    if (el && el.dataset.part === part && el.readyState >= 1) return fn();
+    if (tries > 40) { katerCueStatus('ההקלטה עדיין נטענת, נסו שוב בעוד רגע.'); return; }
+    setTimeout(() => katerWhenReady(part, fn, tries + 1), 250);
+  }
+  // mode 'cue': from the previous line until it is Kater's turn · mode 'mine': only Kater's own line from the recording
+  function katerCuePlay(idx, mode) {
+    const c = katerCueInfo(idx); if (!c) return;
+    const go = () => {
+      katerStopAt = mode === 'mine' ? c.end - 0.15 : c.mine - 0.3;
+      seekAndPlayKater(c.part, Math.max(0, (mode === 'mine' ? c.mine : c.start) - 0.2));
+      katerCueStatus(mode === 'mine' ? '🎧 ככה זה בהצגה…' : '🎧 מאזין… ברגע שמגיע התור שלך זה עוצר');
+    };
+    if (katerAudioPart !== c.part) { setKaterAudioPart(c.part); katerCueStatus('טוען את ההקלטה…'); }
+    katerWhenReady(c.part, go);
+  }
+  function katerCueStop() { katerStopAt = null; const el = katerAudioEl(); if (el && !el.paused) { try { el.pause(); } catch (e) {} } }
+  function katerCueTick(el) {
+    if (katerStopAt !== null && el.currentTime >= katerStopAt - 0.12) {
+      katerStopAt = null; try { el.pause(); } catch (e) {}
+      katerCueStatus('⏸ עכשיו התור שלך! אמרו את המשפט בקול, ואז הפכו את הכרטיס');
+    }
   }
 
   // <<KATERSTATS>> per-scene progress: listening, visits, line / word practice, plus the "📊 התקדמות" screen
@@ -6361,18 +6409,22 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       const known = getKaterKnown();
       const knownCount = katerQueue.filter(i => known.includes(i)).length;
       const speakId = `kater-practice-speak-${idx}`;
+      const cueInfo = katerCueInfo(idx);
       let body;
       if (!katerRevealed) {
         body = `
           <div class="check-card kater-practice-card">
             ${katerStarBtn(idx, 'card-star')}
-            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
-            <div class="kater-practice-cue">נסו לומר את המשפט של החתול בעל פה, ואז הקישו להצגה</div>
-            <button class="kater-reveal-btn" onclick="revealKaterLine()">הראה את המשפט</button>
+            <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}</div>
+            ${cueInfo ? `<div class="kp-cues">${cueInfo.cues.map(c => `<div class="kp-cue" dir="ltr">${c.s && c.s !== 'Person' ? `<b>${escapeHtml(c.s)}:</b> ` : ''}${escapeHtml(c.d)}${katerCueHe && c.e ? `<small dir="rtl">${escapeHtml(c.e)}</small>` : ''}</div>`).join('')}</div>
+            <div class="kp-btns"><button class="kp-listen" onclick="katerCuePlay(${idx}, 'cue')">🎧 האזן להצגה עד התור שלי</button><button class="kp-he${katerCueHe ? ' on' : ''}" onclick="toggleKaterCueHe()">תרגום</button></div>
+            <div class="kp-status" id="kpStatus"></div>` : `<div class="kater-cue">${escapeHtml(katerStrip(line.cue) || line.cue)}</div>`}
+            <div class="kater-practice-cue">מה אומר החתול עכשיו? אמרו את המשפט בקול, ואז הפכו את הכרטיס</div>
+            <button class="kater-reveal-btn" onclick="revealKaterLine()">🔄 הפוך את הכרטיס</button>
           </div>`;
       } else {
         body = `
-          <div class="check-card kater-practice-card">
+          <div class="check-card kater-practice-card kp-flip">
             ${katerStarBtn(idx, 'card-star')}
             <div class="kater-cue">חלק ${escapeHtml(line.part)} · ${escapeHtml(line.scene)}<br>${escapeHtml(katerStrip(line.cue) || line.cue)}</div>
             <div class="kater-de-row">
@@ -6380,6 +6432,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
               <button class="play-btn play-btn-sm" id="${speakId}" onclick="speak('${escapeJs(katerStrip(line.de))}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>
             </div>
             <div class="kater-he">${escapeHtml(katerStrip(line.he) || line.he)}</div>
+            ${cueInfo ? `<div class="kp-btns"><button class="kp-listen" onclick="katerCuePlay(${idx}, 'mine')">🎧 ככה זה בהצגה</button></div><div class="kp-status" id="kpStatus"></div>` : ''}
             <div class="kater-judge-row">
               <button class="kater-know-btn" onclick="judgeKaterLine(true)">✓ ידעתי</button>
               <button class="kater-unknow-btn" onclick="judgeKaterLine(false)">✗ עוד לא</button>
