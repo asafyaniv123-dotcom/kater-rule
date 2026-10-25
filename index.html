@@ -5336,6 +5336,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     if (mode === 'scenes') katerStat('visit', katerStatKeyForHdr(katerAudioPart, katerScenesCur(katerAudioPart)));
     if ((mode === 'practice' || mode === 'cards') && !katerQueue.length) buildKaterQueue();
     if (mode === 'quiz') katerQuiz = null;
+    if (mode === 'vocab') katerVocabSnap = null;
     renderKater();
   }
 
@@ -5345,10 +5346,20 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function katerVocabNewKeys() { katerVocabKeys = KATER_VOCAB.map(() => Math.random()); }
   katerVocabNewKeys();
   function katerVocabFilteredList() {
-    const list = KATER_VOCAB.filter(v => !v.dir && (katerPart === 'all' || v.part === katerPart) && (katerScene === 'all' || katerSceneKey(v) === katerScene));
-    if (katerVocabShuffle) return list.sort((a, b) => katerVocabKeys[KATER_VOCAB.indexOf(a)] - katerVocabKeys[KATER_VOCAB.indexOf(b)]);
+    let list = katerVocabBase();
+    if (katerVocabShuffle) list.sort((a, b) => katerVocabKeys[KATER_VOCAB.indexOf(a)] - katerVocabKeys[KATER_VOCAB.indexOf(b)]);
     // new words were appended to the data, so sort by position in the play (stable for words on the same line)
-    return list.sort((a, b) => (a.part === b.part ? 0 : (a.part < b.part ? -1 : 1)) || a.lineIndex - b.lineIndex);
+    else list.sort((a, b) => (a.part === b.part ? 0 : (a.part < b.part ? -1 : 1)) || a.lineIndex - b.lineIndex);
+    if (katerVocabFilter !== 'all') {
+      // the set is frozen for the round (so marking a word "known" doesn't make it vanish under your finger); it refreshes when the round restarts
+      const sig = katerVocabFilter + '|' + katerPart + '|' + katerScene;
+      if (!katerVocabSnap || katerVocabSnap.sig !== sig) {
+        const kn = new Set(getKaterVocabKnown());
+        katerVocabSnap = { sig, ids: new Set(list.map(v => KATER_VOCAB.indexOf(v)).filter(i => katerVocabFilter === 'unknown' ? !kn.has(i) : katerVocabStars.has(i))) };
+      }
+      list = list.filter(v => katerVocabSnap.ids.has(KATER_VOCAB.indexOf(v)));
+    }
+    return list;
   }
   function toggleKaterVocabShuffle() {
     katerVocabShuffle = !katerVocabShuffle;
@@ -5404,6 +5415,32 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     return `<button class="kater-note-add" onclick="event.stopPropagation(); startKaterVocabNote()">✎ הוסיפו איך אני זוכר את המילה</button>`;
   }
 
+  // ---- word filter (all / only the ones I didn't know / starred) and word stars ----
+  let katerVocabFilter = (function () { const f = safeGet('delearn_kater_vocab_filter', 'all'); return f === 'unknown' || f === 'star' ? f : 'all'; })();
+  let katerVocabSnap = null;
+  let katerVocabStars = (function () { try { const a = JSON.parse(safeGet('delearn_kater_vocab_stars', '[]')); return new Set(Array.isArray(a) ? a.filter(n => Number.isInteger(n)) : []); } catch (e) { return new Set(); } })();
+  function katerVocabStarsSave() { safeSet('delearn_kater_vocab_stars', JSON.stringify([...katerVocabStars].sort((a, b) => a - b))); }
+  function setKaterVocabFilter(f) {
+    katerVocabFilter = f === 'unknown' || f === 'star' ? f : 'all';
+    safeSet('delearn_kater_vocab_filter', katerVocabFilter);
+    katerVocabSnap = null; katerVocabIndex = 0; katerVocabFlipped = false; katerVocabEditing = false;
+    renderKater();
+  }
+  function toggleKaterVocabStar(i, ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    if (katerVocabStars.has(i)) katerVocabStars.delete(i); else katerVocabStars.add(i);
+    katerVocabStarsSave();
+    const b = document.getElementById('kvStar'), on = katerVocabStars.has(i);
+    if (b) { b.classList.toggle('on', on); b.textContent = on ? '⭐' : '☆'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    const c = document.getElementById('kvfStarN'); if (c) c.textContent = katerVocabBase().filter(v => katerVocabStars.has(KATER_VOCAB.indexOf(v))).length;
+  }
+  function katerVocabBase() { return KATER_VOCAB.filter(v => !v.dir && (katerPart === 'all' || v.part === katerPart) && (katerScene === 'all' || katerSceneKey(v) === katerScene)); }
+  function katerVocabCss() {
+    if (document.getElementById('kvfCss')) return;
+    const st = document.createElement('style'); st.id = 'kvfCss';
+    st.textContent = '.kvf-row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}.kvf-row .nav-btn{flex:1 1 auto;font-size:13px;padding:7px 8px}.kvf-star{margin-inline-start:8px;vertical-align:middle}.kvf-done{text-align:center;color:var(--ink-soft);padding:22px 12px;line-height:1.7}';
+    document.head.appendChild(st);
+  }
   function getKaterVocabKnown() {
     try { return JSON.parse(safeGet('delearn_kater_vocab_known', '[]')); } catch (e) { return []; }
   }
@@ -5436,7 +5473,9 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
   function nextKaterVocab() {
     const list = katerVocabFilteredList();
     if (!list.length) return;
+    const wrapped = katerVocabIndex + 1 >= list.length;
     katerVocabIndex = (katerVocabIndex + 1) % list.length;
+    if (wrapped && katerVocabFilter === 'unknown') katerVocabSnap = null; // a full round is over: the next one holds only what is still unknown
     katerVocabFlipped = false; katerVocabEditing = false;
     renderKater();
   }
@@ -5515,8 +5554,17 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         <button class="nav-btn" onclick="openKaterSpeak()">🎤 בחינה בדיבור</button>
         <button class="nav-btn" onclick="openBowls()">🥣 קערות</button>
       </div>`;
+    katerVocabCss();
+    const baseL = katerVocabBase(), knS = new Set(getKaterVocabKnown());
+    const nUnk = baseL.filter(v => !knS.has(KATER_VOCAB.indexOf(v))).length, nStar = baseL.filter(v => katerVocabStars.has(KATER_VOCAB.indexOf(v))).length;
+    const fb = (f, label) => `<button class="nav-btn${katerVocabFilter === f ? ' active-toggle' : ''}" onclick="setKaterVocabFilter('${f}')">${label}</button>`;
+    const chips = `<div class="kvf-row">${fb('all', 'הכול · ' + baseL.length)}${fb('unknown', '✗ שלא ידעתי · ' + nUnk)}${fb('star', '⭐ מסומנות · <span id="kvfStarN">' + nStar + '</span>')}</div>`;
     if (!list.length) {
-      return dirRow + `<div class="vocab-missed-empty">אין מילים בסצנה הזאת.</div>`;
+      const msg = !baseL.length ? 'אין מילים בסצנה הזאת.'
+        : katerVocabFilter === 'unknown' ? '🎉 אין מילים שלא ידעת בסצנה הזאת.<br>אפשר לעבור ל"הכול" ולחזור על כולן.'
+        : katerVocabFilter === 'star' ? '⭐ עוד לא סימנת מילים בכוכבית בסצנה הזאת.<br>עוברים ל"הכול", ולוחצים על ☆ ליד מילה שרוצים לחזור אליה.'
+        : 'אין מילים בסצנה הזאת.';
+      return dirRow + chips + `<div class="kvf-done">${msg}</div>`;
     }
     if (katerVocabIndex >= list.length) katerVocabIndex = 0;
     if (katerVocabIndex < 0) katerVocabIndex = list.length - 1;
@@ -5530,8 +5578,8 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
     const metaLine = `עמ' ${escapeHtml(String(item.page))} · ${escapeHtml(item.scene)}`;
     const speakId = `kater-vocab-speak-${trueIdx}`;
     const speakBtn = `<button class="play-btn play-btn-sm" id="${speakId}" onclick="event.stopPropagation(); speak('${escapeJs(item.de)}', '${speakId}')" aria-label="השמע בגרמנית">🔊</button>`;
-    return dirRow + `
-      <div class="flashcard-counter">${katerVocabIndex + 1} / ${list.length} · ידועים: ${knownCount}</div>
+    return dirRow + chips + `
+      <div class="flashcard-counter">${katerVocabIndex + 1} / ${list.length} · ידועים: ${knownCount}<button id="kvStar" class="kater-star kvf-star${katerVocabStars.has(trueIdx) ? ' on' : ''}" onclick="toggleKaterVocabStar(${trueIdx}, event)" aria-pressed="${katerVocabStars.has(trueIdx) ? 'true' : 'false'}" aria-label="סימון המילה בכוכבית">${katerVocabStars.has(trueIdx) ? '⭐' : '☆'}</button></div>
       <div class="flashcard-wrap">
         <div class="flashcard kater-fc${katerVocabFlipped ? ' flipped' : ''}" id="katerVocabCard" onclick="flipKaterVocabCard()">
           <div class="flashcard-face flashcard-front">
@@ -5974,7 +6022,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         out.push({
           key, part, name: s.name, hdr: s.i, dur, sec, passes: sec / dur, visits: rec.visits || 0, pr: rec.pr || 0, vw: rec.vw || 0, last: rec.last || 0,
           lines: lines.length, linesKnown: lines.filter(i => lk.has(i)).length, stars: lines.filter(i => katerStars.has(i)).length,
-          words: words.length, wordsKnown: words.filter(i => vk.has(i)).length
+          words: words.length, wordsKnown: words.filter(i => vk.has(i)).length, wstars: words.filter(i => katerVocabStars.has(i)).length
         });
       });
     });
@@ -6055,7 +6103,7 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
 
     const ranked = sc.filter(s => s.lines || s.words).map(s => ({ s, n: katerStatNeed(s) })).sort((a, b) => b.n - a.n).slice(0, 3);
     const focus = `<div class="ks-card"><h3>🎯 איפה לשים דגש</h3>` + ranked.map((x, i) => `<div class="ks-focus"><div class="n">${i + 1}</div><div style="flex:1"><b>${escapeHtml(x.s.name)} <span>· חלק ${x.s.part}</span></b><span>${escapeHtml(katerStatReasons(x.s) || 'הכי פחות מתורגלת')}</span>
-        <div class="ks-btns"><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','listen')">🎧 האזן</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','practice')">📖 משפטים</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','vocab')">🔤 מילים</button></div></div></div>`).join('') +
+        <div class="ks-btns"><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','listen')">🎧 האזן</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','practice')">📖 משפטים</button><button onclick="katerStatsGo('${escapeHtml(x.s.key)}','vocab')">🔤 מילים</button>${x.s.words - x.s.wordsKnown > 0 ? `<button onclick="katerStatsGo('${escapeHtml(x.s.key)}','vocab-unknown')">✗ שלא ידעתי</button>` : ''}</div></div></div>`).join('') +
       `<div class="ks-sub" style="margin-top:6px">הדירוג משלב האזנה, משפטים ומילים שידעת, ונותן יותר משקל לסצנות עם הרבה משפטים שלך.</div></div>`;
 
     const cell = (txt, p) => p === null ? `<div class="ks-cell"><div class="v" style="color:var(--ink-soft)">–</div></div>` : `<div class="ks-cell"><div class="v">${txt}</div><div class="ks-bar"><i style="width:${Math.max(4, Math.round(p * 100))}%;background:${katerStatHue(p)}"></i></div></div>`;
@@ -6069,8 +6117,8 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
         `<div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(s.lines ? s.linesKnown + '/' + s.lines : '', p.lines)}</div><div ${tog} class="${open ? 'ks-row-open' : ''}">${cell(s.words ? s.wordsKnown + '/' + s.words : '', p.words)}</div>`;
       if (open) {
         const ln = (a, b) => `<div class="ln"><span>${a}</span><b>${b}</b></div>`;
-        grid += `<div class="ks-detail">${ln('🎧 האזנה', katerStatNum(s.passes) + ' פעמים (' + katerStatDur(s.sec) + ' מתוך ' + katerStatDur(s.dur) + ' בסצנה)')}${ln('🚪 כניסות', s.visits + ' · אחרונה: ' + katerStatAgo(s.last))}${ln('📝 משפטים שלי שידעת', s.linesKnown + ' מתוך ' + s.lines)}${ln('⭐ משפטים מסומנים', s.stars)}${ln('📖 תרגולי משפטים', s.pr)}${ln('🔤 מילים שידעת', s.wordsKnown + ' מתוך ' + s.words)}${ln('🔤 תרגולי מילים', s.vw)}
-          <div class="ks-btns"><button onclick="katerStatsGo('${k}','listen')">🎧 האזן לסצנה</button><button onclick="katerStatsGo('${k}','practice')">📖 תרגול משפטים</button><button onclick="katerStatsGo('${k}','vocab')">🔤 לימוד מילים</button></div></div>`;
+        grid += `<div class="ks-detail">${ln('🎧 האזנה', katerStatNum(s.passes) + ' פעמים (' + katerStatDur(s.sec) + ' מתוך ' + katerStatDur(s.dur) + ' בסצנה)')}${ln('🚪 כניסות', s.visits + ' · אחרונה: ' + katerStatAgo(s.last))}${ln('📝 משפטים שלי שידעת', s.linesKnown + ' מתוך ' + s.lines)}${ln('⭐ משפטים מסומנים', s.stars)}${ln('📖 תרגולי משפטים', s.pr)}${ln('🔤 מילים שידעת', s.wordsKnown + ' מתוך ' + s.words)}${ln('⭐ מילים מסומנות', s.wstars)}${ln('🔤 תרגולי מילים', s.vw)}
+          <div class="ks-btns"><button onclick="katerStatsGo('${k}','listen')">🎧 האזן לסצנה</button><button onclick="katerStatsGo('${k}','practice')">📖 תרגול משפטים</button><button onclick="katerStatsGo('${k}','vocab')">🔤 כל המילים</button>${s.words - s.wordsKnown > 0 ? `<button onclick="katerStatsGo('${k}','vocab-unknown')">✗ רק מה שלא ידעתי (${s.words - s.wordsKnown})</button>` : ''}${s.wstars ? `<button onclick="katerStatsGo('${k}','vocab-star')">⭐ מסומנות (${s.wstars})</button>` : ''}</div></div>`;
       }
     });
     grid += `</div><div class="ks-legend"><span>🟥 צריך תשומת לב</span><span>🟩 מצוין</span><span>האזנה: יעד ${KSTAT_LISTEN_GOAL} פעמים · כניסות: יעד ${KSTAT_VISIT_GOAL}</span></div>`;
@@ -6097,6 +6145,11 @@ html.fun .sp-mic.live { box-shadow: 0 5px 0 #bd3a3e; }
       katerOrder = 'sequence'; safeSet('delearn_kater_order', 'sequence');
       buildKaterQueue(); katerVocabIndex = 0; katerVocabFlipped = false; katerIndex = 0; katerRevealed = false;
       katerQuiz = null;
+      if (mode.indexOf('vocab') === 0) {
+        katerVocabFilter = mode === 'vocab-unknown' ? 'unknown' : mode === 'vocab-star' ? 'star' : 'all';
+        safeSet('delearn_kater_vocab_filter', katerVocabFilter); katerVocabSnap = null;
+        mode = 'vocab';
+      }
       setKaterViewMode(mode);
     }
     window.scrollTo({ top: 0 });
