@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Der gestiefelte Kater · Hörspiel</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="theme-color" content="#2d3f4d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kater">
+<style>
+:root{--bg:#faf7f2;--card:#ffffff;--ink:#26323b;--soft:#6b7782;--line:#e6dfd3;--hdr:#2d3f4d;--hdr-ink:#fff;--accent:#d9822b;--accent-bg:#fdf0df;--now:#fff6d6;--mine:#e8f1f7;--shadow:0 1px 0 rgba(0,0,0,.04),0 6px 18px rgba(45,63,77,.08)}
+@media (prefers-color-scheme:dark){:root{--bg:#161d23;--card:#1f2830;--ink:#e9edf0;--soft:#9aa7b1;--line:#2c3844;--hdr:#0f161b;--hdr-ink:#f4f6f8;--accent:#f0a04b;--accent-bg:#3a2c1b;--now:#3a3418;--mine:#1d3140;--shadow:0 6px 18px rgba(0,0,0,.35)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-padding-top:150px;scroll-padding-bottom:240px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(230px + env(safe-area-inset-bottom))}
+button,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--hdr);color:var(--hdr-ink);padding:max(10px,env(safe-area-inset-top)) 14px 0;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.title h1{margin:0;font:700 19px/1.2 Georgia,"Times New Roman",serif;letter-spacing:.2px}
+.title span{font-size:12.5px;opacity:.72}
+.tabs{display:flex;gap:4px;margin-top:8px}
+.tab{flex:1;border:0;background:transparent;color:inherit;opacity:.65;padding:9px 4px 10px;font-weight:700;font-size:15px;border-bottom:3px solid transparent;cursor:pointer}
+.tab.on{opacity:1;border-bottom-color:var(--accent)}
+.bar{display:flex;gap:8px;align-items:center;margin:12px 0 8px;flex-wrap:wrap}
+.seg{display:inline-flex;border:2px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.seg button{border:0;background:transparent;padding:8px 14px;font-weight:700;cursor:pointer}
+.seg button.on{background:var(--hdr);color:var(--hdr-ink)}
+main{max-width:720px;margin:0 auto;padding:0 14px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 12px;margin:10px 0;box-shadow:var(--shadow)}
+.panel summary{cursor:pointer;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.panel summary::-webkit-details-marker{display:none}
+.panel .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.chk{display:flex;align-items:center;gap:8px;font-size:14.5px}
+.chk input{width:20px;height:20px;accent-color:var(--accent)}
+select{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:7px 10px}
+.hint{font-size:12.5px;color:var(--soft);margin:6px 2px}
+.scene{margin:22px 0 8px;padding:10px 12px;border-radius:12px;background:var(--hdr);color:var(--hdr-ink);display:flex;justify-content:space-between;gap:10px;align-items:baseline;cursor:pointer}
+.scene b{font:700 16px/1.3 Georgia,serif}
+.scene small{opacity:.75;white-space:nowrap}
+.line{position:relative;margin:6px 0;padding:9px 12px 10px 14px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--sc,var(--line));border-radius:12px;cursor:pointer}
+.line .sp{display:flex;gap:8px;align-items:center;font-size:12.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:var(--sc,var(--soft))}
+.line .sp i{font-style:normal;font-weight:600;color:var(--soft);text-transform:none;letter-spacing:0;margin-left:auto}
+.line .tx{font:17.5px/1.5 Georgia,"Times New Roman",serif;margin-top:2px}
+.line .tx em{color:var(--soft);font-style:italic}
+.line.mine{background:var(--mine)}
+.line.mine .sp:after{content:"★";color:var(--accent);margin-left:2px}
+.line.now{background:var(--now);box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+.conceal .line.mine:not(.peek) .tx{filter:blur(7px);user-select:none}
+.line.off{display:none}
+.scenecard{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:16px;padding:12px 14px;margin:10px 0;box-shadow:var(--shadow);cursor:pointer}
+.scenecard.now{box-shadow:0 0 0 2px var(--accent),var(--shadow);background:var(--now)}
+.scenecard b{display:block;font:700 17px/1.3 Georgia,serif}
+.scenecard span{font-size:13px;color:var(--soft)}
+.parthead{margin:22px 2px 4px;font-weight:800;color:var(--soft);text-transform:uppercase;font-size:12.5px;letter-spacing:.6px}
+.follow{position:fixed;right:14px;bottom:calc(226px + env(safe-area-inset-bottom));z-index:30;border:0;border-radius:999px;background:var(--accent);color:#1d1306;font-weight:800;padding:10px 14px;box-shadow:0 6px 18px rgba(0,0,0,.3);display:none;cursor:pointer}
+.player{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--hdr);color:var(--hdr-ink);padding:10px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 18px rgba(0,0,0,.25);border-radius:18px 18px 0 0}
+.pin{max-width:720px;margin:0 auto}
+.now-line{font-size:12.5px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:18px}
+.seekrow{display:flex;align-items:center;gap:10px;margin:6px 0 4px;font-variant-numeric:tabular-nums;font-size:12.5px}
+.seekwrap{position:relative;flex:1;height:28px}
+.seekwrap input{position:absolute;inset:0;width:100%;margin:0;background:transparent;accent-color:var(--accent);height:28px}
+.ticks{position:absolute;left:0;right:0;top:11px;height:6px;pointer-events:none}
+.ticks i{position:absolute;top:0;width:2px;height:6px;background:rgba(255,255,255,.55);border-radius:1px}
+.ctl{display:flex;justify-content:center;align-items:center;gap:6px}
+.ctl button{border:0;background:rgba(255,255,255,.12);color:inherit;border-radius:14px;min-width:44px;height:44px;font-weight:800;cursor:pointer;padding:0 10px}
+.ctl .play{background:var(--accent);color:#1d1306;min-width:64px;height:52px;font-size:22px;border-radius:18px}
+.ctl2{margin-top:8px}.ctl .mine{background:rgba(240,160,75,.3);font-size:13px;padding:0 12px;height:38px;flex:1}.ctl2 select{height:38px}
+.ctl select{background:rgba(255,255,255,.12);border:0;color:inherit;height:44px;border-radius:14px}
+.ctl select option{color:#222}
+.msg{font-size:13px;text-align:center;margin-top:6px;opacity:.9;min-height:18px}
+.msg button{border:0;border-radius:10px;padding:4px 10px;margin-left:6px;font-weight:700;cursor:pointer}
+.prog{height:6px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden;margin:6px 0;display:none}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.install{font-size:14px;line-height:1.6}
+.install b{display:inline-block;min-width:74px}
+</style>
+</head>
+<body>
+<header>
+  <div class="title"><h1>Der gestiefelte Kater</h1><span>Hörspiel zum Mitlesen</span></div>
+  <div class="tabs"><button class="tab on" data-tab="hear">🎧 Hören</button><button class="tab" data-tab="scenes">🎬 Szenen</button></div>
+</header>
+<main id="main"></main>
+<button class="follow" id="follow">↓ Zur aktuellen Zeile</button>
+<div class="player"><div class="pin">
+  <div class="now-line" id="nowLine">&nbsp;</div>
+  <div class="prog" id="prog"><i id="progI"></i></div>
+  <div class="seekrow"><span id="tCur">0:00</span><div class="seekwrap"><div class="ticks" id="ticks"></div><input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Position in der Aufnahme"></div><span id="tTot">–:––</span></div>
+  <div class="ctl">
+    <button id="bScenePrev" aria-label="Vorherige Szene">⏮</button>
+    <button id="bBack" aria-label="10 Sekunden zurück">↺10</button>
+    <button id="bPlay" class="play" aria-label="Abspielen">▶</button>
+    <button id="bFwd" aria-label="10 Sekunden vor">10↻</button>
+    <button id="bSceneNext" aria-label="Nächste Szene">⏭</button>
+  </div>
+  <div class="ctl ctl2">
+    <button id="bMinePrev" class="mine" style="display:none" aria-label="Vorherige Zeile meiner Rolle">◂ meine Zeile</button>
+    <select id="rate" aria-label="Geschwindigkeit"><option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option></select>
+    <button id="bMineNext" class="mine" style="display:none" aria-label="Nächste Zeile meiner Rolle">meine Zeile ▸</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</div></div>
+<audio id="au" preload="none"></audio>
+<script>
+const SCRIPT = /*SCRIPT_DATA*/;
+const SCENE_DE = /*SCENE_NAMES*/;
+const PARTS = {
+  '1': { files: ['../audio/kater-part1-a.mp3', '../audio/kater-part1-b.mp3'], bytes: [12374517, 12374518] },
+  '2': { files: ['../audio/kater-part2-a.mp3', '../audio/kater-part2-b.mp3'], bytes: [9431571, 9431553] }
+};
+const LEAD = 0.3;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem('kj_' + k); return v == null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('kj_' + k, v); } catch (e) {} } };
+const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); };
+
+// ---- speakers, scenes ----
+const SKIP_ROLE = { Person: 1, Leute: 1, Publikum: 1, Mau: 1, Müllers: 1, Einzelne: 1, Zauber: 1, Kinder: 1 };
+const counts = {}; ['1', '2'].forEach(p => SCRIPT[p].forEach(l => { counts[l.s] = (counts[l.s] || 0) + 1; }));
+const ROLES = Object.keys(counts).filter(s => counts[s] >= 2 && !SKIP_ROLE[s]).sort((a, b) => counts[b] - counts[a]);
+const PAL = [210, 28, 340, 150, 270, 12, 190, 50, 310, 100, 240, 70];
+const spColor = s => { let i = ROLES.indexOf(s); if (i < 0) i = (s.length * 7) % PAL.length; return 'hsl(' + PAL[i % PAL.length] + ',55%,42%)'; };
+const SCENES = {}; ['1', '2'].forEach(p => {
+  const a = SCRIPT[p], out = [];
+  a.forEach((l, i) => { if (l.sc) out.push({ i, t: l.t, name: SCENE_DE[l.sc] || l.sc }); });
+  out.forEach((sc, k) => { const to = k + 1 < out.length ? out[k + 1].i : a.length; sc.to = to; sc.n = to - sc.i; const c = {}; for (let j = sc.i; j < to; j++) c[a[j].s] = (c[a[j].s] || 0) + 1; sc.who = Object.keys(c).sort((x, y) => c[y] - c[x]).slice(0, 4); });
+  SCENES[p] = out;
+});
+
+// ---- state ----
+let part = store.get('part', '1'), tab = 'hear', role = store.get('role', ''), onlyMine = store.get('only', '0') === '1', conceal = store.get('conceal', '0') === '1';
+let follow = true, active = -1, loadedPart = '', loading = null, pending = null, seeking = false;
+const au = $('au'); au.playbackRate = parseFloat(store.get('rate', '1')) || 1; $('rate').value = String(au.playbackRate);
+const pos = p => parseFloat(store.get('pos' + p, '0')) || 0;
+const lineAt = (p, t) => { const a = SCRIPT[p]; let lo = 0, hi = a.length - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (a[m].t <= t + LEAD) { r = m; lo = m + 1; } else hi = m - 1; } return r; };
+const sceneOf = (p, i) => { const s = SCENES[p]; let r = -1; for (let k = 0; k < s.length; k++) if (s[k].i <= i) r = k; return r; };
+
+// ---- rendering ----
+function prettyDe(t) { return esc(t).replace(/\(([^)]*)\)/g, '<em>($1)</em>'); }
+function render() {
+  const m = $('main');
+  const seg = '<div class="bar"><div class="seg">' + ['1', '2'].map(p => '<button data-part="' + p + '" class="' + (part === p ? 'on' : '') + '">Teil ' + p + '</button>').join('') + '</div></div>';
+  if (tab === 'scenes') {
+    let h = '';
+    ['1', '2'].forEach(p => {
+      h += '<div class="parthead">Teil ' + p + ' · ' + SCRIPT[p].length + ' Zeilen</div>';
+      SCENES[p].forEach((s, k) => { h += '<button class="scenecard" data-part="' + p + '" data-t="' + s.t + '" data-sc="' + p + '-' + k + '"><b>' + esc(s.name) + '</b><span>' + fmt(s.t) + ' · ' + s.n + ' Zeilen · ' + esc(s.who.join(', ')) + '</span></button>'; });
+    });
+    h += '<details class="panel" style="margin-top:22px"><summary>📲 App auf dem Handy installieren <span>▾</span></summary><div class="install" style="margin-top:8px"><b>iPhone:</b> in Safari öffnen → Teilen-Symbol → „Zum Home-Bildschirm“.<br><b>Android:</b> in Chrome öffnen → Menü ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“.<br>Die Aufnahme wird beim ersten Abspielen geladen und danach auch offline abgespielt.</div></details>';
+    m.innerHTML = h; markNow(); return;
+  }
+  const roleOpts = '<option value="">– keine –</option>' + ROLES.map(r => '<option' + (r === role ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+  const panel = '<details class="panel"' + (role ? '' : ' open') + '><summary>🎭 Meine Rolle' + (role ? ': ' + esc(role) : '') + ' <span>▾</span></summary>' +
+    '<div class="row"><select id="roleSel" aria-label="Meine Rolle">' + roleOpts + '</select></div>' +
+    '<div class="row"><label class="chk"><input type="checkbox" id="onlyMine"' + (onlyMine ? ' checked' : '') + '> Nur meine Zeilen zeigen</label></div>' +
+    '<div class="row"><label class="chk"><input type="checkbox" id="conceal"' + (conceal ? ' checked' : '') + '> Meine Zeilen verdecken (zum Antippen = lesen)</label></div>' +
+    '<div class="hint">Mit einer Rolle erscheinen unten die Knöpfe „meine Zeile“. Sie springen zur Zeile davor, damit du dein Stichwort hörst.</div></details>';
+  const a = SCRIPT[part]; let h = ''; let sceneIdx = 0;
+  a.forEach((l, i) => {
+    if (l.sc) h += '<div class="scene" data-t="' + l.t + '"><b>' + esc(SCENE_DE[l.sc] || l.sc) + '</b><small>' + fmt(l.t) + '</small></div>';
+    const mine = role && l.s === role;
+    h += '<div class="line' + (mine ? ' mine' : '') + (onlyMine && role && !mine ? ' off' : '') + '" id="l' + i + '" data-i="' + i + '" style="--sc:' + spColor(l.s) + '"><div class="sp">' + esc(l.s) + '<i>' + (l.p ? 'S. ' + l.p + ' · ' : '') + fmt(l.t) + '</i></div><div class="tx">' + prettyDe(l.d) + '</div></div>';
+  });
+  h += '<div class="hint" style="margin:18px 2px">Die Zeilen sind automatisch mit der Aufnahme synchronisiert und können an manchen Stellen leicht abweichen. Tippe auf eine Zeile, um dort weiterzuhören.</div>';
+  m.innerHTML = seg + panel + '<div id="script" class="' + (conceal && role ? 'conceal' : '') + '">' + h + '</div>';
+  active = -1; updateActive(true);
+  const rs = $('roleSel'); if (rs) rs.onchange = () => { role = rs.value; store.set('role', role); render(); syncMineBtns(); };
+  const om = $('onlyMine'); if (om) om.onchange = () => { onlyMine = om.checked; store.set('only', onlyMine ? '1' : '0'); render(); };
+  const cc = $('conceal'); if (cc) cc.onchange = () => { conceal = cc.checked; store.set('conceal', conceal ? '1' : '0'); render(); };
+}
+function markNow() { if (tab !== 'scenes') return; const cur = loadedPart === part ? sceneOf(part, lineAt(part, au.currentTime)) : -1; document.querySelectorAll('.scenecard').forEach(b => b.classList.toggle('now', loadedPart && b.dataset.sc === part + '-' + cur && !au.paused)); }
+function syncMineBtns() { const d = role ? '' : 'none'; $('bMinePrev').style.display = d; $('bMineNext').style.display = d; }
+function buildTicks() { const t = $('ticks'); t.innerHTML = ''; const dur = au.duration; if (!isFinite(dur) || loadedPart !== part) return; SCENES[part].forEach(s => { const i = document.createElement('i'); i.style.left = (s.t / dur * 100) + '%'; t.appendChild(i); }); }
+
+function updateActive(force) {
+  const t = loadedPart === part ? au.currentTime : pos(part);
+  const i = lineAt(part, t);
+  if (i === active && !force) return;
+  if (tab === 'hear') {
+    const old = document.querySelector('.line.now'); if (old) old.classList.remove('now');
+    const el = $('l' + i);
+    if (el && (loadedPart === part || force)) { if (loadedPart === part && !au.paused || loadedPart === part && au.currentTime > 0) el.classList.add('now'); if (follow && !(onlyMine && role && el.classList.contains('off'))) { if (loadedPart === part && !au.paused) el.scrollIntoView({ block: 'center', behavior: i === active + 1 ? 'smooth' : 'auto' }); } }
+  }
+  active = i;
+  const l = SCRIPT[part][i]; $('nowLine').textContent = l ? l.s + ': ' + l.d.replace(/\s+/g, ' ') : ' ';
+  markNow();
+}
+
+// ---- audio loading (the recording is two files per part; they are glued together so seeking works everywhere) ----
+function setMsg(h) { $('msg').innerHTML = h || ''; }
+function showProg(f) { $('prog').style.display = f == null ? 'none' : 'block'; if (f != null) $('progI').style.width = Math.round(f * 100) + '%'; }
+async function fetchChunk(url, size, onN) {
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.body || !r.body.getReader) { const b = await r.blob(); onN(b.size); return b; }
+  const rd = r.body.getReader(), parts = []; for (;;) { const x = await rd.read(); if (x.done) break; parts.push(x.value); onN(x.value.length); }
+  return new Blob(parts, { type: 'audio/mpeg' });
+}
+const blobUrls = {};
+function ensureAudio(p) {
+  if (loadedPart === p && au.src) return Promise.resolve();
+  if (loading && loading.p === p) return loading.pr;
+  const pr = (async () => {
+    if (!blobUrls[p]) {
+      const info = PARTS[p], total = info.bytes[0] + info.bytes[1]; let got = 0; const blobs = [];
+      setMsg('Aufnahme wird geladen … (beim ersten Mal ca. ' + Math.round(total / 1048576) + ' MB)'); showProg(0);
+      for (let i = 0; i < 2; i++) blobs.push(await fetchChunk(info.files[i], info.bytes[i], n => { got += n; showProg(Math.min(1, got / total)); setMsg('Aufnahme wird geladen … ' + Math.min(99, Math.round(got / total * 100)) + ' %'); }));
+      blobUrls[p] = URL.createObjectURL(new Blob(blobs, { type: 'audio/mpeg' })); showProg(null);
+    }
+    au.src = blobUrls[p]; loadedPart = p;
+    await new Promise((res, rej) => { if (au.readyState >= 1) return res(); au.onloadedmetadata = () => res(); au.onerror = () => rej(new Error('decode')); });
+    au.playbackRate = parseFloat($('rate').value) || 1; setMsg(''); $('tTot').textContent = fmt(au.duration); buildTicks();
+  })();
+  loading = { p, pr }; pr.then(() => { loading = null; }, e => { loading = null; showProg(null); setMsg('Die Aufnahme konnte nicht geladen werden. Bitte Internetverbindung prüfen. <button id="retry">Erneut versuchen</button>'); const b = $('retry'); if (b) b.onclick = () => { setMsg(''); if (pending) go(pending.p, pending.t, pending.play); }; });
+  return pr;
+}
+async function go(p, t, play) {
+  pending = { p, t, play };
+  if (p !== part) setPart(p, false);
+  try { await ensureAudio(p); } catch (e) { return; }
+  if (part !== p) return;
+  au.currentTime = Math.max(0, Math.min(t, (au.duration || t) - 0.5)); updateActive(true);
+  if (play) { try { await au.play(); } catch (e) { setMsg('Zum Abspielen bitte auf ▶ tippen.'); } }
+}
+function setPart(p, rerender) {
+  if (p === part && rerender !== true) return;
+  if (loadedPart && loadedPart !== p) { au.pause(); }
+  part = p; store.set('part', p); active = -1; follow = true;
+  if (loadedPart === p) { $('tTot').textContent = fmt(au.duration); } else { $('tTot').textContent = '–:––'; $('seek').value = 0; $('tCur').textContent = fmt(pos(p)); }
+  buildTicks(); render(); updateButtons();
+  if (tab === 'hear' && loadedPart !== p) { const i = lineAt(p, pos(p)); const el = $('l' + i); if (el && pos(p) > 1) el.scrollIntoView({ block: 'center' }); }
+}
+function updateButtons() { const playing = loadedPart === part && !au.paused; $('bPlay').textContent = playing ? '⏸' : '▶'; $('bPlay').setAttribute('aria-label', playing ? 'Pause' : 'Abspielen'); }
+
+// ---- events ----
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-tab],[data-part],.line,.scene,.scenecard'); if (!t) return;
+  if (t.dataset.tab) { tab = t.dataset.tab; document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b === t)); $('follow').style.display = 'none'; render(); window.scrollTo(0, 0); return; }
+  if (t.classList.contains('scenecard')) { tab = 'hear'; document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === 'hear')); follow = true; const p = t.dataset.part, tt = parseFloat(t.dataset.t); setPart(p, true); go(p, tt, true); return; }
+  if (t.dataset.part) { setPart(t.dataset.part, true); return; }
+  if (t.classList.contains('scene')) { follow = true; go(part, parseFloat(t.dataset.t), true); return; }
+  if (t.classList.contains('line')) {
+    if (conceal && role && t.classList.contains('mine') && !t.classList.contains('peek')) { t.classList.add('peek'); return; }
+    follow = true; go(part, SCRIPT[part][+t.dataset.i].t, true);
+  }
+});
+$('bPlay').onclick = async () => {
+  if (loadedPart === part && !au.paused) { au.pause(); return; }
+  if (loadedPart === part) { try { await au.play(); } catch (e) {} return; }
+  follow = true; go(part, pos(part), true);
+};
+$('bBack').onclick = () => { if (loadedPart === part) au.currentTime = Math.max(0, au.currentTime - 10); };
+$('bFwd').onclick = () => { if (loadedPart === part) au.currentTime = Math.min(au.duration, au.currentTime + 10); };
+$('rate').onchange = () => { au.playbackRate = parseFloat($('rate').value) || 1; store.set('rate', $('rate').value); };
+function stepScene(d) {
+  const t = loadedPart === part ? au.currentTime : pos(part), s = SCENES[part]; let k = -1; for (let j = 0; j < s.length; j++) if (s[j].t <= t + 1) k = j;
+  let n = d > 0 ? k + 1 : (t - s[Math.max(k, 0)].t > 4 ? k : k - 1); if (n < 0 || n >= s.length) return; follow = true; go(part, s[n].t, !(loadedPart === part && au.paused) || true);
+}
+$('bSceneNext').onclick = () => stepScene(1); $('bScenePrev').onclick = () => stepScene(-1);
+function stepMine(d) {
+  if (!role) return; const a = SCRIPT[part], cur = lineAt(part, loadedPart === part ? au.currentTime : pos(part)); let n = -1;
+  if (d > 0) { for (let i = cur + 1; i < a.length; i++) if (a[i].s === role) { n = i; break; } }
+  else { for (let i = cur - 1; i >= 0; i--) if (a[i].s === role) { n = i; break; } }
+  if (n < 0) { setMsg('Keine weitere Zeile für ' + esc(role) + ' in diesem Teil.'); setTimeout(() => setMsg(''), 2500); return; }
+  const from = Math.max(0, n - 1); follow = true; go(part, a[from].t, true);
+}
+$('bMineNext').onclick = () => stepMine(1); $('bMinePrev').onclick = () => stepMine(-1);
+const seek = $('seek');
+seek.addEventListener('input', () => { seeking = true; if (isFinite(au.duration) && loadedPart === part) $('tCur').textContent = fmt(seek.value / 1000 * au.duration); });
+seek.addEventListener('change', () => { seeking = false; if (isFinite(au.duration) && loadedPart === part) { au.currentTime = seek.value / 1000 * au.duration; follow = true; updateActive(true); } else { seek.value = 0; go(part, pos(part), true); } });
+['touchmove', 'wheel'].forEach(ev => window.addEventListener(ev, () => { if (tab === 'hear' && loadedPart === part && !au.paused) { follow = false; $('follow').style.display = 'block'; } }, { passive: true }));
+$('follow').onclick = () => { follow = true; $('follow').style.display = 'none'; const el = $('l' + active); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+let lastSave = 0;
+au.addEventListener('timeupdate', () => {
+  if (loadedPart !== part) return;
+  if (!seeking) { $('tCur').textContent = fmt(au.currentTime); if (isFinite(au.duration) && au.duration) seek.value = Math.round(au.currentTime / au.duration * 1000); }
+  updateActive(false);
+  const n = Date.now(); if (n - lastSave > 4000) { lastSave = n; store.set('pos' + part, String(au.currentTime)); }
+  if (follow && $('follow').style.display !== 'none') $('follow').style.display = 'none';
+});
+function scrollActive(smooth) { if (tab !== 'hear') return; const el = $('l' + active); if (el) { const l = document.querySelector('.line.now'); if (l && l !== el) l.classList.remove('now'); el.classList.add('now'); el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' }); } }
+['play', 'pause', 'ended'].forEach(ev => au.addEventListener(ev, () => { updateButtons(); markNow(); if (ev === 'play' && follow) setTimeout(() => scrollActive(false), 60); if (ev !== 'play' && loadedPart) store.set('pos' + loadedPart, String(au.currentTime)); }));
+au.addEventListener('ended', () => { if (part === '1') setMsg('Ende von Teil 1. <button id="toP2">Weiter mit Teil 2</button>'); const b = $('toP2'); if (b) b.onclick = () => { setMsg(''); store.set('pos2', '0'); setPart('2', true); go('2', 0, true); }; });
+document.addEventListener('visibilitychange', () => { if (document.hidden && loadedPart) store.set('pos' + loadedPart, String(au.currentTime)); });
+// lock-screen controls
+if ('mediaSession' in navigator) {
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: 'Der gestiefelte Kater', artist: 'Hörspiel', album: 'Teil ' + part });
+    navigator.mediaSession.setActionHandler('play', () => au.play()); navigator.mediaSession.setActionHandler('pause', () => au.pause());
+    navigator.mediaSession.setActionHandler('seekbackward', () => { au.currentTime = Math.max(0, au.currentTime - 10); }); navigator.mediaSession.setActionHandler('seekforward', () => { au.currentTime = Math.min(au.duration, au.currentTime + 10); });
+  } catch (e) {}
+}
+syncMineBtns(); setPart(part, true);
+$('tCur').textContent = fmt(pos(part));
+if (pos(part) > 5) setMsg('Weiter bei ' + fmt(pos(part)) + ' · tippe auf ▶');
+else setMsg('Tippe auf ▶ oder auf eine Zeile. Die Aufnahme (ca. 25 MB) wird beim ersten Mal geladen.');
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
